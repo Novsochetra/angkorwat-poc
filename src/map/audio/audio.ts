@@ -1,13 +1,15 @@
 import { eventsNow } from '../events';
 import type { HeightField } from '../heightfield';
 import { DEFAULT_SETTINGS, VOLUME_KEYS, type AnimalCall, type Duck, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type TypeKey, type UISound, type VolumeKey } from '../types';
-import { warmUp } from './dsp';
+import { PHONE, frameCap, graphicsNow } from '../graphics';
+import { SOURCE_KEYS, setLiveRate, warmUp } from './dsp';
+import { makeOffThread, offThreadStats } from './offThread';
 import { FestivalSound } from './festival';
 import { FireworksSound } from './fireworks';
 import { attachSfx, tickSfx } from './addonSfx';
 import { BUSES, SoundEngine, type Mix, type Volumes } from './engine';
 import { footstepsState, loadFootsteps, prefetchFootsteps, type FootstepsState, type StepSet } from './footsteps';
-import { warmSpeech } from './speech';
+import { SPEECH_KEYS, warmSpeech } from './speech';
 import { loadTypewriter, prefetchTypewriter, typewriterState, type TypewriterState } from './typewriter';
 import { loadChants, prefetchChants } from './chants';
 import type { Ears } from './water';
@@ -97,6 +99,9 @@ export interface AudioDebug {
   strikes: number;
   /** New Year's Eve's sounds made so far by kind (fireworks.ts: launch, whistle, boom, crackle, sizzle, shout, murmur, roar; dropped). */
   fireworks: Record<string, number>;
+  /** The context's sample rate (Hz: `contextRate`), and the buffers the synth worker made (offThread.ts). */
+  rate: number;
+  offThread: { made: number; ms: number; failed: boolean };
 }
 
 /** How far ahead voices are scheduled (s), and how often the scheduler runs (ms). */
@@ -112,13 +117,30 @@ const RETRY = [5, 20, 60];
 const HELD_AFTER = 700;
 
 /**
+ * The live context's sample rate (Hz). The Web Audio graph already plays on the browser's own audio thread (not the
+ * page's: the page only schedules, ≈ 0.1 ms a frame), but that thread's work grows with the rate: every node runs
+ * once for each sample. Measured offline over 20 s of New Year's midnight at the square (the whole map's sound and
+ * the fireworks): 48 kHz took 11 % of a core, 32 kHz 7 %, 24 kHz 4.8 %. On a phone that work competes with the
+ * page and the GPU's driver for the same few fast cores, so: 24 kHz on a phone, on Low graphics or with the Battery
+ * saver (the top of the sound, past 12 kHz, is lost: small speakers hardly play it); 32 kHz elsewhere (all sound
+ * up to 16 kHz). `soundrate=<Hz>` in the address holds one (checks, comparing).
+ */
+export function contextRate(): number {
+  const asked = Number(new URLSearchParams(location.search).get('soundrate'));
+  if (asked >= 8000 && asked <= 96000) return asked;
+  return PHONE || graphicsNow.level === 'low' || frameCap.fps <= 30 ? 24000 : 32000;
+}
+
+/**
  * Make the noise and insect buffers in idle moments, a millisecond at a
  * time, so starting never stalls a frame; then decode and cut the footstep
  * recordings (their slow part runs off the page's thread, the cutting in
  * slices), so they are ready before the first step; then the people's
  * voices (speech.ts: the greetings, the sellers' calls, the talk).
  */
-function warmInIdleTime(): void {
+function warmInIdleTime(rate: number): void {
+  // (on the synth worker first, all at once: the idle slices below then only wait for them; with no worker they make them)
+  makeOffThread([...SOURCE_KEYS, `impulse-${rate}`, ...SPEECH_KEYS]);
   type Idle = (cb: (d: { timeRemaining(): number }) => void, o?: { timeout: number }) => number;
   const ric = (window as unknown as { requestIdleCallback?: Idle }).requestIdleCallback;
   const later: Idle = ric ? (cb) => ric(cb, { timeout: 3000 }) : (cb) => window.setTimeout(() => cb({ timeRemaining: () => 4 }), 60);
@@ -148,12 +170,15 @@ function warmInIdleTime(): void {
 export function createMapAudio(): MapAudio {
   // Headless stills never play sound: no need to make buffers (or fetch the footsteps) there.
   const still = new URLSearchParams(location.search).get('shot') === '1';
+  // (the reverb's impulse is made ahead at the rate the context will have)
+  const rate = contextRate();
+  setLiveRate(rate);
   if (!still) {
     // (the recordings download while the buffers are made)
     prefetchFootsteps();
     prefetchTypewriter();
     prefetchChants();
-    warmInIdleTime();
+    warmInIdleTime(rate);
   }
   let ctx: AudioContext | null = null;
   let engine: SoundEngine | null = null;
@@ -301,7 +326,14 @@ export function createMapAudio(): MapAudio {
   function build(): void {
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;
-    ctx = new AC({ latencyHint: 'balanced' });
+    // (at a rate of its own: `contextRate`; a browser that refuses the rate gets its own)
+    const rate = contextRate();
+    setLiveRate(rate);
+    try {
+      ctx = new AC({ latencyHint: 'balanced', sampleRate: rate });
+    } catch {
+      ctx = new AC({ latencyHint: 'balanced' });
+    }
     engine = new SoundEngine(ctx);
     fest = new FestivalSound(engine);
     fireworks = new FireworksSound(engine);
@@ -496,7 +528,7 @@ export function createMapAudio(): MapAudio {
       const gains = { master: round(engine ? engine.master.gain.value : volumes.master ** 2) } as Record<VolumeKey, number>;
       for (const b of BUSES) gains[b] = round(engine ? engine.bus[b].dry.gain.value : volumes[b] ** 2);
       const steps = footstepsState();
-      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) }, duck: ducked, duckLevel: round(engine?.duckLevel ?? 1), typewriter: typewriterState().state, strikes: typewriterState().strikes, fireworks: { ...(fireworks?.played ?? {}) } };
+      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) }, duck: ducked, duckLevel: round(engine?.duckLevel ?? 1), typewriter: typewriterState().state, strikes: typewriterState().strikes, fireworks: { ...(fireworks?.played ?? {}) }, rate: ctx?.sampleRate ?? 0, offThread: { ...offThreadStats } };
     },
   };
 }

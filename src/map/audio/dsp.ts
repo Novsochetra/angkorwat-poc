@@ -109,10 +109,47 @@ const jobs = new Map<string, Job>();
 /** Whether the buffer under `key` is made (a big one is better left out than made at once in a frame). */
 export const isMade = (key: string): boolean => ready.has(key);
 
+/**
+ * Buffers being made on the synth worker (offThread.ts): the idle-time warm-ups skip them (`warm` waits for them),
+ * and `obtain` makes one at once only if it is wanted before the worker is done.
+ */
+const away = new Set<string>();
+/** The job makers by key, for the synth worker (this file's sources, speech.ts's voices and shouts). */
+const MAKERS = new Map<string, () => Job>();
+export function registerJobs(list: Readonly<Record<string, () => Job>>): void {
+  for (const [k, make] of Object.entries(list)) MAKERS.set(k, make);
+}
+/** The job maker of `key` (the reverb's impulse at any rate: `impulse-<Hz>`). */
+export function makerOf(key: string): (() => Job) | undefined {
+  const m = /^impulse-(\d+)$/.exec(key);
+  if (m) {
+    const rate = Number(m[1]);
+    return () => impulseJob(rate);
+  }
+  return MAKERS.get(key);
+}
+/** Keys not made yet (nor on their way). */
+export const wanted = (keys: Iterable<string>): string[] => [...keys].filter((k) => !ready.has(k) && !away.has(k) && !jobs.has(k));
+export function sendAway(keys: readonly string[]): void {
+  for (const k of keys) away.add(k);
+}
+/** A buffer the worker made (ignored if it was made here meanwhile). */
+export function adopt(key: string, buf: AudioBuffer): void {
+  away.delete(key);
+  if (!ready.has(key)) ready.set(key, buf);
+}
+/** The worker failed: what it had is made here again (idle time, or at once when wanted). */
+export function bringBack(keys?: readonly string[]): void {
+  if (!keys) away.clear();
+  else for (const k of keys) away.delete(k);
+}
+
 /** The buffer made by `make` under `key`: made once (finishing its job at once if not warmed up yet), then reused. */
 export function obtain(key: string, make: () => Job): AudioBuffer {
   let b = ready.get(key);
   if (b) return b;
+  // (wanted before the worker sent it: made here, its copy ignored)
+  away.delete(key);
   const job = jobs.get(key) ?? make();
   jobs.delete(key);
   let r = job.next();
@@ -611,7 +648,6 @@ const SOURCES = {
   splash: splashJob,
   babble: babbleJob,
   'noise-white': () => noiseJob('white'),
-  [`impulse-${RATE}`]: () => impulseJob(RATE),
   'cricket-a': () => chirpJob({ freq: 4700, every: 0.64, pulses: 3, rate: 30, seconds: 5.3, seed: 11 }),
   'cricket-b': () => chirpJob({ freq: 4100, every: 0.93, pulses: 4, rate: 24, seconds: 6.7, seed: 23 }),
   trill: () => trillJob({ freq: 3000, rate: 42, seconds: 7.9, seed: 5 }),
@@ -619,6 +655,10 @@ const SOURCES = {
   crunch: crunchJob,
   fire: fireJob,
 } satisfies Record<string, () => Job>;
+registerJobs(SOURCES);
+
+/** The source buffers' keys (the synth worker makes them all as the page opens: offThread.ts). */
+export const SOURCE_KEYS: readonly string[] = Object.keys(SOURCES);
 
 export type SourceName = 'rustle' | 'roar' | 'splash' | 'babble' | 'cricket-a' | 'cricket-b' | 'trill' | 'buzz' | 'crunch' | 'fire';
 /** A named source loop (leaves, water, insects, grit under a sole, a wood fire). */
@@ -628,18 +668,35 @@ export const noise = (kind: NoiseKind): AudioBuffer => obtain(`noise-${kind}`, S
 /** The reverb's impulse response, at the context's rate. */
 export const impulse = (ctx: BaseAudioContext): AudioBuffer => obtain(`impulse-${ctx.sampleRate}`, () => impulseJob(ctx.sampleRate));
 
+/** The live context's rate (audio.ts `contextRate`): its reverb's impulse is warmed up with the rest. */
+let liveRate = RATE;
+let warmList: Readonly<Record<string, () => Job>> | null = null;
+export function setLiveRate(rate: number): void {
+  if (rate === liveRate) return;
+  liveRate = rate;
+  warmList = null;
+}
+
 /**
  * Make the buffers ahead, a slice at a time, while `timeLeft()` (ms) allows.
  * Returns true once all are made. Call it from idle time before sound starts.
  */
 export function warmUp(timeLeft: () => number): boolean {
-  return warm(SOURCES, timeLeft);
+  const rate = liveRate;
+  warmList ??= { ...SOURCES, [`impulse-${rate}`]: () => impulseJob(rate) };
+  return warm(warmList, timeLeft);
 }
 
 /** Make `sources`' buffers (keyed like `obtain`) a slice at a time while `timeLeft()` (ms) allows; true once all are made. */
 export function warm(sources: Readonly<Record<string, () => Job>>, timeLeft: () => number): boolean {
+  let waiting = false;
   for (const [key, make] of Object.entries(sources)) {
     if (ready.has(key)) continue;
+    // (on the synth worker: not made here too)
+    if (away.has(key)) {
+      waiting = true;
+      continue;
+    }
     let job = jobs.get(key);
     if (!job) jobs.set(key, (job = make()));
     for (;;) {
@@ -652,7 +709,7 @@ export function warm(sources: Readonly<Record<string, () => Job>>, timeLeft: () 
       }
     }
   }
-  return true;
+  return !waiting;
 }
 
 // ── Wave shapes ─────────────────────────────────────────────────────────────

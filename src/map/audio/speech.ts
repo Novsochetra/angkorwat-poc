@@ -1,4 +1,4 @@
-import { isMade, mulberry32, obtain, range, warm, weighted, type Job, type Rng } from './dsp';
+import { isMade, mulberry32, obtain, range, registerJobs, warm, weighted, type Job, type Rng } from './dsp';
 
 /**
  * The people's voices, synthesized (no recordings): a small formant speech
@@ -699,6 +699,9 @@ function* shoutJob(syls: readonly Syl[], seed: number): Job {
 /** The countdown's shouts, made ahead when the night is near (`warmShouts`), else at once when wanted. */
 const SHOUT_JOBS: Record<string, () => Job> = {};
 SHOUTS.forEach((syls, i) => (SHOUT_JOBS[`speech-shout-${i}`] = () => shoutJob(syls, 7310 + i * 131)));
+registerJobs(SHOUT_JOBS);
+/** The shouts' keys (made on the synth worker when the night is near: offThread.ts). */
+export const SHOUT_KEYS: readonly string[] = Object.keys(SHOUT_JOBS);
 
 /** The crowd shouting the number `n` (1‥10) of the last ten seconds, or (0) "សួស្តីឆ្នាំថ្មី!" at midnight (stereo). */
 export function shout(n: number): AudioBuffer {
@@ -718,6 +721,9 @@ const SPEECH: Record<string, () => Job> = {};
 for (const [kind, list] of Object.entries(CLIPS)) list.forEach(([who, syls], i) => (SPEECH[`speech-${kind}-${i}`] = () => clipJob(who, syls, 101 + i * 37 + kind.length * 1009)));
 SPEECH['speech-chatter'] = () => chatterJob(10, 424242);
 SPEECH['speech-crowd'] = () => crowdJob(9, 515151);
+registerJobs(SPEECH);
+/** The voices' keys (made on the synth worker as the page opens: offThread.ts). */
+export const SPEECH_KEYS: readonly string[] = Object.keys(SPEECH);
 
 /** A clip of `kind`: one of its voices, picked with `r` (among `from`, the voices' indices, if given). */
 export function clip(kind: ClipKind, r: Rng, from?: readonly number[]): AudioBuffer {

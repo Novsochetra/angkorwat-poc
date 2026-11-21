@@ -196,6 +196,10 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `minimap=show|button|hide` in shots). The key help bottom left has a
   setting too (Key help; `keyhelp=0` in shots; ? still lists every key).
 - Sound: a Sound on switch and one volume per bus in the settings (`VOLUME_KEYS` in `src/map/types.ts`);
+  the graph plays on the browser's audio thread at 32 kHz, 24 kHz on a phone, Low or the Battery saver
+  (`audio.ts` `contextRate`, `soundrate=<Hz>` holds one: the audio thread's work follows the rate), and its
+  buffers (noise, insects, the reverb, voices, New Year's shouts) are made on a worker (`audio/synth.worker.ts`,
+  `audio/offThread.ts`; idle slices on the page without one; `audio.debug().offThread`);
   footsteps are the recordings in `assets/sound/` (`src/map/audio/footsteps.ts`), and so is
   the monks' chanting (សូត្រមន្ត: dawn, blessing, dak bat, Visak, Pchum Ben), two
   recordings from Cambodia, close by and far off (`src/map/audio/chants.ts`; synthesized

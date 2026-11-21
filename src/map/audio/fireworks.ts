@@ -3,7 +3,8 @@ import { GROUND, LAKE_SHORE, RING } from '../nye/plan';
 import { burstAt, CROSS_POP, rocketsBetween, showScript, type BurstKind, type Rocket } from '../nye/show';
 import { biquad, cleanup, glide, mulberry32, noise, range } from './dsp';
 import type { SoundEngine } from './engine';
-import { shout, warmShouts } from './speech';
+import { makeOffThread } from './offThread';
+import { SHOUT_KEYS, shout, warmShouts } from './speech';
 import type { Ears } from './water';
 
 /**
@@ -184,8 +185,11 @@ export class FireworksSound {
       this.lookedAt = now;
       const s = nyeSeconds();
       this.active = heardSpan(s);
-      // (the shouts made ahead, in slices, from 10 minutes before)
-      this.warm = !this.active && showSoon(600) && s < 0;
+      // (the shouts made ahead from 10 minutes before, on the synth worker (in slices here without one), and still while
+      // the count is near: a page opened late must not make them at once, in a frame, as the count begins)
+      const want = showSoon(600) && s < -1;
+      if (want && !this.warm) makeOffThread(SHOUT_KEYS);
+      this.warm = want;
       if (!this.active) {
         this.offset = null;
         this.stopCrowd();
@@ -366,7 +370,12 @@ export class FireworksSound {
     src.connect(bp).connect(ce).connect(out);
     src.start(t, this.rnd() * 4);
     src.stop(t + 0.8);
-    // (the rumble rolling round the hills: low noise, slow)
+    nodes.push(osc, env, src, bp, ce);
+    // (the rumble rolling round the hills: low noise, slow; a small, low burst has none, so none is made)
+    if (big < 0.04) {
+      cleanup(osc, nodes);
+      return;
+    }
     const rum = ctx.createBufferSource();
     rum.buffer = noise('brown');
     const rl = biquad(ctx, 'lowpass', 180, 0.6);
@@ -378,7 +387,7 @@ export class FireworksSound {
     rum.connect(rl).connect(re).connect(out);
     rum.start(t, this.rnd() * 4);
     rum.stop(t + 0.2 + 6 * big + 1);
-    nodes.push(osc, env, src, bp, ce, rum, rl, re);
+    nodes.push(rum, rl, re);
     cleanup(rum, nodes);
   }
 
