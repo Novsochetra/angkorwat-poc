@@ -832,7 +832,9 @@ export function buildBeams(
   geo.instanceCount = bases.length;
   // (bound: the beams' reach; the map's culling reads it)
   geo.boundingSphere = bound;
-  const u = { ...hazeUniforms(), uLevel: { value: 0 }, uTime: { value: 0 }, uColor: { value: new Color(0xffd890) }, uStrength: { value: look.level ?? 0.3 }, uWidth: { value: look.width ?? 34 } };
+  // (uShow: the fireworks show playing, 0‥1: the beams dim by half and fan out low to the sides, so they never cross
+  // the bursts; set from the clock as the mesh draws, below)
+  const u = { ...hazeUniforms(), uLevel: { value: 0 }, uTime: { value: 0 }, uShow: { value: 0 }, uColor: { value: new Color(0xffd890) }, uStrength: { value: look.level ?? 0.3 }, uWidth: { value: look.width ?? 34 } };
   const material = new ShaderMaterial({
     name: 'nye:beams',
     transparent: true,
@@ -848,10 +850,11 @@ export function buildBeams(
       attribute vec4 bAim;
       uniform float uTime;
       uniform float uWidth;
+      uniform float uShow;
       varying vec2 vUv;
       void main() {
-        float az = bAim.x + bAim.z * sin(uTime * bAim.w + bBase.w);
-        float el = bAim.y + 0.08 * sin(uTime * bAim.w * 0.71 + bBase.w * 1.3);
+        float az = bAim.x + bAim.z * (1.0 - 0.6 * uShow) * sin(uTime * bAim.w + bBase.w);
+        float el = bAim.y + 0.08 * sin(uTime * bAim.w * 0.71 + bBase.w * 1.3) - 0.45 * uShow;
         vec3 dir = vec3(cos(el) * sin(az), sin(el), cos(el) * cos(az));
         float t = position.y + 0.5;
         vec3 p = bBase.xyz + dir * (t * 260.0);
@@ -866,12 +869,13 @@ export function buildBeams(
       #include <fog_pars_fragment>
       uniform float uLevel;
       uniform float uStrength;
+      uniform float uShow;
       uniform vec3 uColor;
       varying vec2 vUv;
       void main() {
         float across = exp(-vUv.x * vUv.x * 4.0) * 0.8 + exp(-vUv.x * vUv.x * 30.0) * 0.5;
         float along = pow(1.0 - vUv.y, 1.6) * smoothstep(0.0, 0.03, vUv.y);
-        vec3 col = uColor * (uStrength * uLevel * across * along);
+        vec3 col = uColor * (uStrength * uLevel * (1.0 - 0.5 * uShow) * across * along);
         #ifdef USE_FOG
           vec3 hzRay = vFogWorld - cameraPosition;
           col *= 1.0 - 0.55 * hazeDistance(length(hzRay));
@@ -886,5 +890,10 @@ export function buildBeams(
   mesh.renderOrder = 13;
   mesh.visible = false;
   mesh.raycast = () => {};
+  // (the show (clock.ts NYE_TIMES.show, 480 s after midnight): in over 3 s as it starts, out over 6 s as it ends)
+  mesh.onBeforeRender = () => {
+    const s = nyeSeconds();
+    u.uShow.value = s <= 0 || s >= 486 ? 0 : Math.min(1, s / 3, (486 - s) / 6);
+  };
   return { mesh, u };
 }

@@ -21,6 +21,11 @@
 /** Texels a rocket. */
 export const ROW = 6;
 
+/** The water mask (fireworks.ts): `MASK_W` × 512 texels, two pages of `MASK_ROWS` rows each, the second from row 256. */
+export const MASK_W = 512;
+export const MASK_ROWS = 224;
+const MASK_PAGE = (MASK_ROWS / (2 * 256)).toFixed(6);
+
 /** The kinds' order in the shader's tables. */
 export const KIND_INDEX = { peony: 0, chrysanthemum: 1, willow: 2, crackle: 3, ring: 4, palm: 5, comet: 6, angkor: 7 } as const;
 
@@ -66,7 +71,7 @@ export const FW_VERTEX = /* glsl */ `
   // The signature's picture: its points (x, y, outline, tower), how many.
   uniform sampler2D uShape;
   uniform float uShapeN;
-  // The water that mirrors them: each stretch a segment (x0, z0, x1, z1) and (half width, water level, -, -); how many.
+  // The water that mirrors them: each stretch a segment (x0, z0, x1, z1) and (half width, water level, the glints' strength, -); how many.
   uniform float uSpots;
   uniform vec4 uSpotA[12];
   uniform vec4 uSpotB[12];
@@ -121,7 +126,7 @@ export const FW_VERTEX = /* glsl */ `
     float x0 = max(xm * 0.4, 2.0);
     float x = mix(x0, D, position.y);
     // (as wide as a share of the burst seen from here: a wedge from the eye)
-    float aw = 0.4 * d3.w / max(length(b - c), 1.0) + 0.004;
+    float aw = 0.25 * d3.w / max(length(b - c), 1.0) + 0.004;
     vec2 xz = c.xz + dir * x + sideV * (position.x * x * aw);
     vec4 mvPosition = viewMatrix * vec4(xz.x, level + 0.1, xz.y, 1.0);
     gl_Position = projectionMatrix * mvPosition;
@@ -129,7 +134,7 @@ export const FW_VERTEX = /* glsl */ `
     // (the water mirrors the burst's sparks as long as they glow, not only its flash: a slower curve than its light)
     float wl = KL[int(d2.w + 0.5)];
     float lp = tau < 0.0 ? 0.0 : d4.w * (0.5 * exp(-tau / 0.09) + 0.5 * exp(-tau / 1.2) + wl * 0.45 * exp(-tau / 2.6));
-    vCol = mix(d2.rgb, vec3(1.0), 0.2) * lp * 3.0 * (0.4 + 0.6 * uView.w);
+    vCol = mix(d2.rgb, vec3(1.0), 0.2) * lp * 3.0 * sb.z * (0.4 + 0.6 * uView.w);
     vQ = vec2(position.x, position.y);
     vSoft = -1.0;
     vCore = 0.0;
@@ -164,7 +169,8 @@ export const FW_VERTEX = /* glsl */ `
   // points), held (s before gravity takes it: the picture stays crisp)
   const vec4 KE[8] = vec4[8](vec4(0.0), vec4(0.0), vec4(0.0), vec4(0.0), vec4(0.0), vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 1.9));
   // KF: the climbing shell's look: width (m), its trail (s), its own colour (share, else warm white), brightness
-  const vec4 KF[8] = vec4[8](vec4(0.42, 0.55, 0.0, 1.0), vec4(0.42, 0.55, 0.0, 1.0), vec4(0.42, 0.55, 0.0, 1.0), vec4(0.42, 0.55, 0.0, 1.0), vec4(0.42, 0.55, 0.0, 1.0),
+  // (a shell's own trail short and dim, gone before it bursts: a spark climbing, not a white scratch across the sky)
+  const vec4 KF[8] = vec4[8](vec4(0.36, 0.28, 0.0, 0.7), vec4(0.36, 0.28, 0.0, 0.7), vec4(0.36, 0.28, 0.0, 0.7), vec4(0.36, 0.28, 0.0, 0.7), vec4(0.36, 0.28, 0.0, 0.7),
     vec4(1.1, 0.9, 0.15, 1.7), vec4(1.7, 0.3, 0.8, 2.6), vec4(0.8, 0.8, 0.0, 1.5));
   const vec3 EMBER = vec3(1.0, 0.3, 0.06);
   // A crossette's pieces: white gold.
@@ -198,7 +204,7 @@ export const FW_VERTEX = /* glsl */ `
     vec3 warm = vec3(1.0, 0.48, 0.1) * fl * (0.3 + 0.7 * uView.w);
     vec3 c = cameraPosition;
     vec4 halo = viewMatrix * vec4(bl.xyz, 1.0);
-    halo.xy += vec2(position.x, position.z) * 1.5 * sqrt(max(1.0, -halo.z / 60.0));
+    halo.xy += vec2(position.x, position.z) * 0.95 * sqrt(max(1.0, -halo.z / 60.0));
     vec2 toCam = c.xz - bl.xz;
     float dist = max(length(toCam), 1e-3);
     vec2 dir = toCam / dist;
@@ -315,10 +321,12 @@ export const FW_VERTEX = /* glsl */ `
       vec3 o = mix(b, climb(d1.xyz, b, d1.w, ts), shed);
       v0 = mix(v0, (vec3(h1, h2, hash(h2, h1)) - 0.5) * 5.0 - vec3(0.0, 1.5, 0.0), shed);
       float tl = tau - shed * (ts - d1.w);
-      // (the trail: this vertex is that many seconds behind the head, never before it left)
-      float tv = max(tl - (1.0 - s) * ka.w, 0.0);
       // (a crossette's star flies to its pop, its piece on from there)
       float tp = mix(1e4, ka.z * (0.6 + 0.1 * hash(pj, seed * 5.0)), cr);
+      float popped = cr * step(tp, tl);
+      // (the trail: this vertex is that many seconds behind the head, never before it left; a crossette's piece a
+      // short spark of its own from the pop on, never a stick joined to its star's trail)
+      float tv = max(tl - (1.0 - s) * mix(ka.w, 0.07, popped), tp * popped);
       float ta = min(tv, tp);
       float tb = max(tv - tp, 0.0);
       float tg = max(ta - ke.w, 0.0);
@@ -331,7 +339,6 @@ export const FW_VERTEX = /* glsl */ `
       float held = ke.z * (1.0 - smoothstep(ke.w, ke.w + 0.6, tl));
       float grow = 1.0 - exp(-k * tv);
       p = pa + pb + seg * (1.0 - s) * held * grow;
-      float popped = cr * step(tp, tl);
       v = mix(mix(va, sparkV(vc, 3.2, 4.9, tb, tb), popped), -seg, held * step(1e-4, dot(seg, seg)));
       float u = clamp(tl / life, 0.0, 1.0);
       // Colour: its own, turning to the second, then gold-to-ember as it dies; the tail of a trail warmer. The
@@ -343,6 +350,9 @@ export const FW_VERTEX = /* glsl */ `
       col = mix(col, EMBER, (1.0 - s) * 0.45 * (1.0 - held));
       // (a little brighter as it leaves: not much, or a burst's first fifth of a second is a ball in the bloom)
       float bright = kb.y * pow(1.0 - smoothstep(KH[kind], 1.0, u), KD[kind]) * (1.0 + 0.3 * exp(-tl / 0.12));
+      // (a burst opens: its stars at under half strength as they leave the heart, full by a third of a second; crackles,
+      // comets and the signature their own)
+      bright *= mix(1.0, mix(0.4, 1.0, smoothstep(0.0, 0.35, tl)), (1.0 - kc.y) * (1.0 - ke.y) * (1.0 - ke.z));
       // (flicker; glitter strobes as it fades)
       float fl = 1.0 - kc.z + kc.z * hash(floor(uTime * 24.0), fj + seed * 13.0);
       float strobe = step(0.45, fract(uTime * 11.0 + h1 * 13.0)) * 1.9;
@@ -355,14 +365,14 @@ export const FW_VERTEX = /* glsl */ `
       // A crossette's pieces: a white-gold flash each, twinkling out in 0.6 s.
       float since = max(tl - tp, 0.0);
       float tw = 0.5 + 0.5 * hash(floor(uTime * 30.0), fj + seed * 7.0);
-      bright = mix(bright, (6.0 * exp(-since / 0.07) + 1.8 * tw) * (1.0 - smoothstep(0.35, 0.6, since)), popped);
+      bright = mix(bright, (3.0 * exp(-since / 0.05) + 1.7 * tw * tw) * (1.0 - smoothstep(0.35, 0.6, since)), popped);
       col = mix(col, POP, popped);
       // (along a trail: the head brightest; a trail's tail fades out at the burst's heart, so the hundred trails
       // meeting there in its first second make a bright heart, not a white blot)
       bright *= mix(kc.w, 1.0, pow(s, 1.6));
       bright *= mix(1.0, smoothstep(0.04, 0.32, length(p - o) / max(size, 1.0)), (1.0 - s) * (1.0 - ke.z) * (1.0 - shed));
       // (bigger shells have bigger stars; a comet's star is its own)
-      width = kb.x * mix(clamp(size / 40.0, 0.6, 1.45), 1.0, ke.y) * (1.0 + 2.5 * pop * kc.y);
+      width = kb.x * mix(clamp(size / 40.0, 0.6, 1.45), 1.0, ke.y) * (1.0 + 2.5 * pop * kc.y) * mix(1.0, 0.45, popped);
       minPx = 1.9;
       col *= bright * uView.z;
       // (hidden: before it left, after its life (a crossette's pieces: soon after their pop), a crossette's pieces
@@ -377,13 +387,16 @@ export const FW_VERTEX = /* glsl */ `
       float rise = d1.w;
       float tl = tau + rise;
       float tv = max(tl - (1.0 - s) * kf.y, 0.0);
-      vec3 head = climb(d1.xyz, b, rise, tv);
+      // (its path wavers a little as it climbs)
+      vec3 head = climb(d1.xyz, b, rise, tv) + vec3(sin(tv * 8.0 + seed * 40.0), 0.0, cos(tv * 6.0 + seed * 23.0)) * 0.45 * (1.0 - ke.y);
       vec3 smokeAt = b + vec3(0.6, 0.35, 0.25) * tau - vec3(0.0, size * 0.15, 0.0);
       p = oh.x * head + oh.y * b + oh.z * b + oh.w * smokeAt;
       v = oh.x * (b - d1.xyz) + vec3(0.0, 1.0, 0.0) * (1.0 - oh.x);
       // (the halos are still: the ribbon is a square round its point, its length nothing)
       float fl = 0.75 + 0.25 * hash(floor(uTime * 30.0), seed * 7.0);
-      vec3 shell = mix(vec3(1.0, 0.78, 0.45), mix(d2.rgb, vec3(1.0), 0.3), kf.z) * 1.6 * kf.w * fl * mix(0.1, 1.0, pow(s, 2.0)) * (0.6 + 0.4 * smoothstep(0.0, 0.3, tl));
+      // (warm gold, fading out over its last 0.45 s, a comet's head the exception)
+      vec3 shell = mix(vec3(1.0, 0.7, 0.35), mix(d2.rgb, vec3(1.0), 0.3), kf.z) * 1.4 * kf.w * fl * mix(0.05, 1.0, pow(s, 2.0)) * (0.6 + 0.4 * smoothstep(0.0, 0.3, tl))
+        * mix(smoothstep(0.0, 0.45, -tau), 1.0, ke.y);
       // (the burst's flash: small and quick, a bright point, not a ball that the bloom spreads over the sky)
       vec3 flash = mix(d2.rgb, vec3(1.0), 0.65) * 1.1 * sqrt(uCrowd) * exp(-max(tau, 0.0) / 0.05);
       // (the glow lasts as its sparks do: a soft halo of its colour behind them, white at its heart at first)
@@ -440,6 +453,18 @@ export const FW_VERTEX = /* glsl */ `
 export const FW_FRAGMENT = /* glsl */ `
   #include <fog_pars_fragment>
   uniform float uTime;
+  // Where the map has water: two pages of one mask (the great lake's, the Kulen pool's and stream's), each its corner
+  // (x, z) and one over its size (m); r wet (soft at the shores), g the water's level there (m × 4 / 255).
+  uniform sampler2D uMask;
+  uniform vec4 uMaskA;
+  uniform vec4 uMaskB;
+  vec2 waterMask(vec2 xz) {
+    vec2 a = (xz - uMaskA.xy) * uMaskA.zw;
+    vec2 b = (xz - uMaskB.xy) * uMaskB.zw;
+    float ia = step(0.0, a.x) * step(a.x, 1.0) * step(0.0, a.y) * step(a.y, 1.0);
+    float ib = step(0.0, b.x) * step(b.x, 1.0) * step(0.0, b.y) * step(b.y, 1.0);
+    return ia * texture2D(uMask, vec2(a.x, a.y * ${MASK_PAGE})).rg + ib * texture2D(uMask, vec2(b.x, 0.5 + b.y * ${MASK_PAGE})).rg;
+  }
   varying vec3 vCol;
   varying vec2 vQ;
   varying float vSoft;
@@ -464,21 +489,23 @@ export const FW_FRAGMENT = /* glsl */ `
         col *= 1.0 - 0.8 * hazeDistance(length(vFogWorld - cameraPosition));
       #endif
     } else if (vSoft < 0.0) {
-      // The water: inside its stretch; each point as bright as a ripple there would turn the burst to the eye
-      // (the half way between them from the water's up: slopes ≈ 0.35 rad on a breezy night), glints across the
-      // column (in the eye's angle down to it, so they are even on the screen), a soft wedge across.
-      vec2 a = vSeg.xy;
-      vec2 ab = vSeg.zw - a;
-      float t = clamp(dot(vXZ - a, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
-      float inside = 1.0 - smoothstep(vHalf.x - 1.5, vHalf.x, length(vXZ - a - ab * t));
+      // The water: only where the map has water (the mask, soft at its shores: no light on the land or the trees by
+      // it); each point as bright as a ripple there would turn the burst to the eye (the half way between them from
+      // the water's up: slopes ≈ 0.35 rad on a breezy night), broken into short glints (in the eye's angle down to
+      // it, so they are even on the screen), soft at the column's sides and ends: no edge anywhere.
+      // (and only water at this column's own level: a stream's stretch up the falls never lights the pool below it)
+      vec2 wm = waterMask(vXZ);
+      float wet = wm.x * (1.0 - smoothstep(0.6, 1.6, abs(wm.y * 63.75 - vB.w)));
       vec3 P = vec3(vXZ.x, vB.w, vXZ.y);
       vec3 h = normalize(normalize(vB.xyz - P) + normalize(cameraPosition - P));
       float glit = exp(-(1.0 - h.y) / 0.12);
       float phi = atan(vHalf.z, length(vXZ - cameraPosition.xz));
       float across = vQ.x;
-      float bands = (0.5 + 0.5 * sin(phi * 900.0 - uTime * 2.6 + vHalf.y * 40.0)) * (0.55 + 0.45 * sin(phi * 330.0 + across * 3.0 + uTime * 1.1));
-      float shape = exp(-across * across * 2.2) * (1.0 - smoothstep(0.8, 1.0, vQ.y));
-      col = vCol * glit * shape * (0.2 + bands) * inside;
+      float g1 = 0.5 + 0.5 * sin(phi * 900.0 - uTime * 2.6 + vHalf.y * 40.0);
+      float g2 = 0.5 + 0.5 * sin(across * 11.0 + phi * 310.0 + uTime * 1.3 + vHalf.y * 17.0);
+      float glints = smoothstep(0.35, 0.95, g1 * (0.35 + 0.65 * g2));
+      float shape = exp(-across * across * 3.0) * (1.0 - across * across) * smoothstep(0.0, 0.15, vQ.y) * (1.0 - smoothstep(0.7, 1.0, vQ.y));
+      col = vCol * glit * shape * (0.1 + 1.2 * glints) * wet;
       #ifdef USE_FOG
         col *= 1.0 - 0.8 * hazeDistance(length(vFogWorld - cameraPosition));
       #endif

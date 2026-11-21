@@ -7,6 +7,9 @@ import {
   DoubleSide,
   DataTexture,
   FloatType,
+  LinearFilter,
+  RGFormat,
+  UnsignedByteType,
   Frustum,
   Group,
   InstancedBufferGeometry,
@@ -31,7 +34,7 @@ import { addLamp } from '../sky/lampSlots';
 import { clearSkyTint, SKY_TINT } from '../sky/tint';
 import type { GraphicsLevel, MapContext, MapFrame, MapPart } from '../types';
 import { showTime } from './clock';
-import { FW_FRAGMENT, FW_VERTEX, KIND_INDEX, ROW, SEGS } from './_fwShaders';
+import { FW_FRAGMENT, FW_VERTEX, KIND_INDEX, MASK_ROWS, MASK_W, ROW, SEGS } from './_fwShaders';
 import { SQUARE } from './plan';
 import {
   burstAt,
@@ -119,8 +122,8 @@ const GLOW_SHARE = 0.7;
 const GLOWS: Record<BurstKind, number> = { peony: 1, chrysanthemum: 1, willow: 1, crackle: 0.3, ring: 0.7, palm: 1, comet: 0.3, angkor: 1 };
 /** The barges' lanterns the shader holds (`uBarge`), their height over the water and how far astern of the middle (m). */
 const MAX_BARGES = 24;
-const BARGE_LANTERN = 3.1;
-const BARGE_STERN = 2.8;
+const BARGE_LANTERN = 1.5;
+const BARGE_STERN = 3.0;
 
 const COLOURS = Object.fromEntries(Object.entries(SHOW_COLOURS).map(([k, hex]) => [k, new Color(hex)])) as Record<ShowColour, Color>;
 
@@ -178,18 +181,20 @@ export function buildFireworks(ctx: MapContext): MapPart {
   const lakeLevel = field.waterAt(-470, 20);
   if (lakeLevel !== null) {
     spotA.push(new Vector4(-620, 22, -370, 20));
-    spotB.push(new Vector4(72, lakeLevel, 0, 0));
+    // (x the half width, y the level, z the glints' strength: the open lake in full, the small pool and the stream
+    // under the bursts dimmer, or a burst right over them is a bright patch of light, not glints)
+    spotB.push(new Vector4(72, lakeLevel, 1, 0));
   }
   const POOL = { x: 446, z: -303, r: 11 };
   const poolLevel = field.waterAt(POOL.x, POOL.z);
   if (poolLevel !== null) {
     spotA.push(new Vector4(POOL.x, POOL.z, POOL.x + 0.01, POOL.z));
-    spotB.push(new Vector4(POOL.r, poolLevel, 0, 0));
+    spotB.push(new Vector4(POOL.r, poolLevel, 0.3, 0));
   }
   type Sample = { x: number; z: number; level: number; w: number };
   const stretch = (a: Sample, b: Sample) => {
     spotA.push(new Vector4(a.x, a.z, b.x, b.z));
-    spotB.push(new Vector4(Math.max(1.5, Math.min(a.w, b.w) / 2), (a.level + b.level) / 2, 0, 0));
+    spotB.push(new Vector4(Math.max(1.5, Math.min(a.w, b.w) / 2), (a.level + b.level) / 2, 0.45, 0));
   };
   for (const river of field.rivers) {
     let from: Sample | null = null;
@@ -219,6 +224,74 @@ export function buildFireworks(ctx: MapContext): MapPart {
   }
   const spots = spotB.filter((b) => b.y > -999).length;
 
+  // Where the map has water, for the glints (so no light falls on the land or the trees by the water, nor floats over
+  // other water at another level): a mask of two pages, the great lake round the lake show and the Kulen pool with the
+  // stream by the square (a texel ≈ 1 m): r wet, soft at the shores (blurred twice, a little in from the shore line);
+  // g the water's level there (m × 4, spread a texel onto the shore).
+  const maskData = new Uint8Array(MASK_W * 512 * 2);
+  const kulenBox = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
+  spotA.slice(lakeLevel !== null ? 1 : 0, spots).forEach((a, i) => {
+    const r = spotB[i + (lakeLevel !== null ? 1 : 0)].x + 4;
+    kulenBox.x0 = Math.min(kulenBox.x0, a.x - r, a.z - r);
+    kulenBox.x1 = Math.max(kulenBox.x1, a.x + r, a.z + r);
+    kulenBox.z0 = Math.min(kulenBox.z0, a.y - r, a.w - r);
+    kulenBox.z1 = Math.max(kulenBox.z1, a.y + r, a.w + r);
+  });
+  if (!Number.isFinite(kulenBox.x0)) Object.assign(kulenBox, { x0: POOL.x - 20, x1: POOL.x + 20, z0: POOL.z - 20, z1: POOL.z + 20 });
+  const pages = [
+    { x0: -720, z0: -90, w: 470, h: 210 },
+    { x0: kulenBox.x0, z0: kulenBox.z0, w: kulenBox.x1 - kulenBox.x0, h: kulenBox.z1 - kulenBox.z0 },
+  ];
+  pages.forEach((pg, k) => {
+    const page = new Float32Array(MASK_W * MASK_ROWS);
+    const lev = new Float32Array(MASK_W * MASK_ROWS);
+    for (let j = 0; j < MASK_ROWS; j++)
+      for (let i = 0; i < MASK_W; i++) {
+        const x = pg.x0 + ((i + 0.5) / MASK_W) * pg.w;
+        const z = pg.z0 + ((j + 0.5) / MASK_ROWS) * pg.h;
+        const w = field.waterAt(x, z);
+        const wet = w !== null && w > field.heightAt(x, z) + 0.02;
+        page[j * MASK_W + i] = wet ? 1 : 0;
+        lev[j * MASK_W + i] = wet ? w : -1;
+      }
+    // (the level spread a texel onto the dry side, so the filtered level holds at the shore)
+    const lv = lev.slice();
+    for (let j = 0; j < MASK_ROWS; j++)
+      for (let i = 0; i < MASK_W; i++) {
+        if (lev[j * MASK_W + i] >= 0) continue;
+        let best = -1;
+        for (let dj = -1; dj <= 1; dj++)
+          for (let di = -1; di <= 1; di++) {
+            const jj = j + dj;
+            const ii = i + di;
+            if (jj >= 0 && jj < MASK_ROWS && ii >= 0 && ii < MASK_W) best = Math.max(best, lev[jj * MASK_W + ii]);
+          }
+        lv[j * MASK_W + i] = best;
+      }
+    const tmpPage = new Float32Array(page.length);
+    for (let pass = 0; pass < 2; pass++) {
+      for (let j = 0; j < MASK_ROWS; j++)
+        for (let i = 0; i < MASK_W; i++) {
+          let sum = 0;
+          for (let dj = -1; dj <= 1; dj++)
+            for (let di = -1; di <= 1; di++) sum += page[Math.min(MASK_ROWS - 1, Math.max(0, j + dj)) * MASK_W + Math.min(MASK_W - 1, Math.max(0, i + di))];
+          tmpPage[j * MASK_W + i] = sum / 9;
+        }
+      page.set(tmpPage);
+    }
+    // (the second page from half way down: _fwShaders.ts `waterMask`)
+    const row0 = k * MASK_W * 256;
+    for (let n = 0; n < page.length; n++) {
+      const v = Math.min(1, Math.max(0, (page[n] - 0.45) / 0.5));
+      maskData[(row0 + n) * 2] = Math.round(v * v * (3 - 2 * v) * 255);
+      maskData[(row0 + n) * 2 + 1] = Math.round(Math.min(63.75, Math.max(0, lv[n])) * 4);
+    }
+  });
+  const mask = new DataTexture(maskData, MASK_W, 512, RGFormat, UnsignedByteType);
+  mask.magFilter = mask.minFilter = LinearFilter;
+  mask.generateMipmaps = false;
+  mask.needsUpdate = true;
+
   // (each barge's lantern: x, y, z and the water's level under it; set with the barges below)
   const bargeAt = Array.from({ length: MAX_BARGES }, () => new Vector4(0, -1000, 0, 0));
   const material = new ShaderMaterial({
@@ -246,6 +319,9 @@ export function buildFireworks(ctx: MapContext): MapPart {
       uLightCol: { value: lightCol },
       uSpots: { value: Math.max(1, spots) },
       uWaterN: { value: 0 },
+      uMask: { value: mask },
+      uMaskA: { value: new Vector4(pages[0].x0, pages[0].z0, 1 / pages[0].w, 1 / pages[0].h) },
+      uMaskB: { value: new Vector4(pages[1].x0, pages[1].z0, 1 / pages[1].w, 1 / pages[1].h) },
       uBarge: { value: bargeAt },
       uSpotA: { value: spotA },
       uSpotB: { value: spotB },
@@ -288,26 +364,43 @@ export function buildFireworks(ctx: MapContext): MapPart {
   fx.matrixAutoUpdate = false;
   object.add(fx);
 
-  // ── The lake show's barges: a dark low pontoon each, a lantern on a pole at its stern; one unlit instanced draw
-  // (dark against the water, as the lantern boats round them, never pale under the moon). The lantern's warm glow and
-  // its streak on the water are the show's draw's last run (`bargeLit`), from when the part is built, while the barges
-  // are in the picture.
+  // ── The lake show's barges: wooden boats as the lantern boats round them (nye/_lkBoats.ts), read as boats from above
+  // too: a tarred hull with a pointed bow and gunwales, its deck lit warm toward the lantern low on a short pole at the
+  // stern, the racks of mortar tubes amidships; one unlit instanced draw (dark on the deep blue water, never pale under
+  // the moon or the haze). The lantern's glow and its streak on the water (short from a steep view) are the show's
+  // draw's last run (bargeLit), from when the part is built, while the barges are in the picture.
   const barges = (() => {
     const n = LAKE_BARGES.length;
-    const tint = (g: BufferGeometry, c: Color) => {
+    const parts: BufferGeometry[] = [];
+    const box = (w: number, h: number, d: number, x: number, y: number, z: number, c: Color) => {
+      const g = new BoxGeometry(w, h, d).translate(x, y, z);
       const k = g.getAttribute('position').count;
       const col = new Float32Array(k * 3);
       for (let i = 0; i < k; i++) col.set([c.r, c.g, c.b], i * 3);
       g.setAttribute('color', new BufferAttribute(col, 3));
-      return g;
+      parts.push(g);
     };
-    // (linear: a near-black tarred hull, a dark pole, the lantern's gold glass; no haze: 150‥250 m off the haze is the
-    // pale night mist, and a hazed hull read as a pale rectangle on the deep blue water)
-    const parts = [
-      tint(new BoxGeometry(3.2, 0.9, 7.5), new Color(0.016, 0.011, 0.008)),
-      tint(new BoxGeometry(0.14, BARGE_LANTERN - 0.7, 0.14).translate(0, (BARGE_LANTERN - 0.7) / 2 + 0.45, BARGE_STERN), new Color(0.02, 0.012, 0.008)),
-      tint(new BoxGeometry(0.42, 0.56, 0.42).translate(0, BARGE_LANTERN - 0.25, BARGE_STERN), new Color(0.85, 0.36, 0.08)),
-    ];
+    // (linear colours: tar, worn wood, the deck warm by the lantern, the tubes, the lantern's gold glass)
+    const TAR = new Color(0.014, 0.01, 0.007);
+    const RAIL = new Color(0.04, 0.025, 0.015);
+    const TUBE = new Color(0.02, 0.018, 0.016);
+    const HALF = 3.8;
+    const SEG = 6;
+    for (let k = 0; k < SEG; k++) {
+      const z = -HALF + ((k + 0.5) * 2 * HALF) / SEG;
+      const t = Math.abs(z) / HALF;
+      // (a pointed bow (-z), a fuller stern)
+      const w = 2.8 * (z < 0 ? 1 - 0.78 * t ** 2.2 : 1 - 0.25 * t ** 4);
+      const len = (2 * HALF) / SEG + 0.02;
+      box(w, 0.55, len, 0, -0.02, z, TAR);
+      for (const side of [-1, 1]) box(0.12, 0.14, len, side * (w / 2 - 0.06), 0.32, z, RAIL);
+      const warm = Math.min(1, Math.max(0, (z + HALF) / (2 * HALF))) ** 1.5;
+      box(w - 0.3, 0.05, len - 0.04, 0, 0.27, z, new Color(0.03 + 0.15 * warm, 0.016 + 0.06 * warm, 0.009 + 0.018 * warm));
+    }
+    box(0.28, 0.4, 0.5, 0, 0.36, -HALF - 0.15, RAIL);
+    for (const x of [-0.55, 0.55]) for (const z of [-1.8, -0.8, 0.2]) box(0.24, 0.55, 0.24, x, 0.55, z, TUBE);
+    box(0.1, 0.9, 0.1, 0, 0.75, BARGE_STERN, RAIL);
+    box(0.34, 0.42, 0.34, 0, BARGE_LANTERN - 0.25, BARGE_STERN, new Color(0.9, 0.42, 0.1));
     const mesh = new InstancedMesh(mergeGeometries(parts) ?? parts[0], new MeshBasicMaterial({ vertexColors: true, fog: false }), n);
     mesh.name = 'fireworks:barges';
     const mat = new Matrix4();

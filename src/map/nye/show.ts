@@ -48,8 +48,8 @@ export const SHOW_COLOURS = {
   purple: 0xb070ff,
   /** Lotus pink. */
   lotus: 0xff6fb8,
-  /** Ice blue-white (a few, as accents). */
-  ice: 0xcfe8ff,
+  /** Ice blue (a few, as accents; blue enough not to bloom white). */
+  ice: 0xb0d4ff,
   /** White flash (crackles). */
   white: 0xfff4e0,
   /** The flag of Cambodia's red (sparingly: the flag moment, accents). */
@@ -105,7 +105,7 @@ export type ShowSite = 'kulen' | 'lake';
  */
 export const SHOW_SITES: Record<ShowSite, { view: readonly [number, number, number]; at: { x: number; y: number; z: number } }> = {
   kulen: { view: VIEW.cam, at: { x: 465, y: 145, z: -420 } },
-  lake: { view: LAKE_VIEW.cam, at: { x: -495, y: 110, z: 50 } },
+  lake: { view: LAKE_VIEW.cam, at: { x: -495, y: 60, z: 50 } },
 };
 
 /** On low graphics a site's `close` rockets are drawn only with the camera this near its crowd view (m). */
@@ -612,14 +612,19 @@ function bargeNear(x: number, z: number): { x: number; z: number } {
   return best;
 }
 
-/** The lake's layers: distance from the terrace (m), elevation seen from it (°), burst radius (m), bearings (°). */
+/**
+ * The lake's layers: distance from the terrace (m), elevation seen from it (°), burst radius (m), bearings (°). Low over
+ * the water, spread across the horizon behind the stage (as the owner's lake reference: the bursts just over the far
+ * shore, 5°‥24° up from the terrace), so they also sit in the sky of the owner's view from over the plaza (l-over: its
+ * picture ends ≈ 3° over the horizon seen from 38 m up) and are mirrored on the water under them.
+ */
 const LAKE_LAYERS: Record<Layer, { d: [number, number]; el: [number, number]; size: [number, number]; b: [number, number] }> = {
   // (the far high ones: over the open water west of the stage, seen from the floating village and far off)
-  crown: { d: [230, 290], el: [28, 37], size: [44, 54], b: [214, 256] },
-  high: { d: [180, 235], el: [21, 31], size: [38, 48], b: [208, 256] },
-  mid: { d: [140, 190], el: [14, 23], size: [26, 34], b: [206, 258] },
+  crown: { d: [230, 300], el: [14, 24], size: [40, 50], b: [222, 258] },
+  high: { d: [180, 240], el: [9, 18], size: [34, 44], b: [206, 258] },
+  mid: { d: [140, 205], el: [5, 11], size: [24, 32], b: [204, 258] },
   // (small and low, right of the stage and its board, before the far rows)
-  low: { d: [108, 130], el: [8, 13], size: [9, 14], b: [226, 256] },
+  low: { d: [105, 130], el: [5, 9], size: [9, 13], b: [226, 256] },
 };
 
 /** A lake burst point in a layer at a bearing (°; random in the layer's if not given): over open water, clear of it. */
@@ -630,13 +635,14 @@ function lakeSpot(rnd: () => number, layer: Layer, bearing?: number, sizeK = 1):
   const size = (L.size[0] + rnd() * (L.size[1] - L.size[0])) * sizeK;
   const el = (L.el[0] + rnd() * (L.el[1] - L.el[0])) * DEG;
   // (over the water, well in from the shore: turned toward 245°, where the lake reaches from 90 to 330 m off)
-  for (let k = 0; k < 40 && !inGreatLake(...fromShore(b, d), 0.4 * size + 8); k++) b += Math.sign(245 - b) * 2;
+  for (let k = 0; k < 40 && !inGreatLake(...fromShore(b, d), 0.25 * size + 6); k++) b += Math.sign(245 - b) * 2;
   const [x, z] = fromShore(b, d);
-  const y = Math.max(LCAM[1] + Math.tan(Math.min(40 * DEG, el)) * d, WATER + 20 + 0.6 * size);
+  // (its lowest stars may fall into the lake, as over real water)
+  const y = Math.max(LCAM[1] + Math.tan(Math.min(40 * DEG, el)) * d, WATER + 14 + 0.5 * size);
   return { x, y, z, size };
 }
 
-/** The lake show (its own seed): Kulen's acts at about three quarters of its density. */
+/** The lake show (its own seed): Kulen's acts at about its density (five to seven at once across the horizon in the busy parts). */
 function lakeShow(): Rocket[] {
   const m = new Maker(mulberry32(0x2027_1a6e), 'lake', () => DECK);
   const rnd = m.rnd;
@@ -705,7 +711,7 @@ function lakeShow(): Rocket[] {
   signature(7.2, false);
 
   // ── The opening (12‥70 s), two at once now and then; the flag at 24 s, as over Kulen.
-  for (let t = 12.5; t < 70; t += 1.2 + rnd() * 0.8) {
+  for (let t = 12.5; t < 70; t += 0.95 + rnd() * 0.6) {
     if (t > 21 && t < 28.6) continue;
     const k = rnd();
     if (k < 0.12) palm(t, 'mid', undefined, 0);
@@ -727,7 +733,7 @@ function lakeShow(): Rocket[] {
 
   // ── Colours (70‥180 s): three at once: mirrored pairs, rings, crackles, palms, a comet fan now and then.
   let fanAt = 92;
-  for (let t = 71; t < 180; t += 1.0 + rnd() * 0.6) {
+  for (let t = 71; t < 180; t += 0.75 + rnd() * 0.45) {
     if (t >= fanAt) {
       comets(t, 3);
       fanAt += 30 + rnd() * 10;
@@ -752,7 +758,7 @@ function lakeShow(): Rocket[] {
   // ── Layers (180‥290 s): four or five at once, high over low, palms, comets; at 205 s the signature faces the
   // floating village.
   fanAt = 190;
-  for (let t = 181; t < 290; t += 0.7 + rnd() * 0.6) {
+  for (let t = 181; t < 290; t += 0.5 + rnd() * 0.45) {
     if (!clear(t)) continue;
     if (t >= fanAt) {
       comets(t, 3 + Math.floor(rnd() * 2));
@@ -769,7 +775,7 @@ function lakeShow(): Rocket[] {
   // willows and palms; the signature again at 338 s, the sky round it clear.
   let fan = 293;
   fanAt = 300;
-  for (let t = 290; t < 400; t += 0.42 + rnd() * 0.4) {
+  for (let t = 290; t < 400; t += 0.32 + rnd() * 0.3) {
     if (!clear(t, 2.6)) continue;
     if (t >= fan) {
       const c = m.pick(['gold', 'purple', 'lotus', 'gold', 'jade'] as const);
