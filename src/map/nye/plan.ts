@@ -109,8 +109,14 @@ export function onSquare(x: number, z: number, margin = 0): boolean {
  */
 export const LAKE_STAGE = { x: -370.2, z: -26.9, yaw: Math.atan2(22, -27), w: 22, d: 12, deck: 1.2 } as const;
 
-/** The shore terrace where the lakeside crowd gathers, facing the stage: a paved ellipse on the meadow (m). */
-export const LAKE_SHORE = { x: -342, z: -64, rx: 20, rz: 15 } as const;
+/**
+ * The shore plaza where the lakeside crowd gathers, facing the stage (the owner's lake reference, 2026-11-21:
+ * assets/new-year-online/lake-reference.png): a ROUND paved plaza on the meadow, its middle on the stage's axis 44.5 m
+ * from the stage (the bank is ≈ 25 m out from it there), `rx` = `rz` its radius to the ring wall (m). Fixed on the
+ * land: the jetty runs from its front down the ghat to wherever the stage floats. The plaza's own layout (its ring
+ * wall, gate, salas, stalls, fire pillars) is below (`lakePlazaAt`, `LAKE_WALL` …), as pure geometry for the people.
+ */
+export const LAKE_SHORE = { x: -342.09, z: -61.4, rx: 21, rz: 21 } as const;
 
 /** The lake show: the bursts over the open water behind the stage seen from the shore (m; `low`‥`high` over the water). */
 export const LAKE_SHOW = { x: -440, z: 10, spread: 70, depth: 45, low: 40, high: 210 } as const;
@@ -118,12 +124,86 @@ export const LAKE_SHOW = { x: -440, z: 10, spread: 70, depth: 45, low: 40, high:
 /** The lakeside crowd's camera (shots and the film): on the terrace's back, eye height, looking over the stage to the lake. */
 export const LAKE_VIEW = { cam: [-330, 12.5, -76] as const, at: [-385, 30, -15] as const, fov: 55 } as const;
 
-/** On the shore terrace (with a margin m). */
+/** On the shore plaza, inside its ring wall (with a margin m). */
 export function onLakeShore(x: number, z: number, margin = 0): boolean {
   const dx = (x - LAKE_SHORE.x) / (LAKE_SHORE.rx + margin);
   const dz = (z - LAKE_SHORE.z) / (LAKE_SHORE.rz + margin);
   return dx * dx + dz * dz <= 1;
 }
+
+// ── The plaza's layout (nye/_lkPlaza*.ts builds it; the people and the mini-map can read it) ─────────────────────────
+//
+// Bearings `phi` round the plaza's middle: 0 toward the stage (down the jetty), + toward the stage's +u (the
+// north-west: the right hand seen from the plaza's back), ±π its back (the land side). Radians; `DEG` for degrees.
+
+const DEG = Math.PI / 180;
+const PF: readonly [number, number] = [-Math.sin(LAKE_STAGE.yaw), -Math.cos(LAKE_STAGE.yaw)];
+const PU: readonly [number, number] = [Math.cos(LAKE_STAGE.yaw), -Math.sin(LAKE_STAGE.yaw)];
+
+/** The map point (x, z) at bearing `phi` and `r` m from the plaza's middle. */
+export function lakePlazaAt(phi: number, r: number): [number, number] {
+  const c = Math.cos(phi);
+  const s = Math.sin(phi);
+  return [LAKE_SHORE.x + (PF[0] * c + PU[0] * s) * r, LAKE_SHORE.z + (PF[1] * c + PU[1] * s) * r];
+}
+
+/** A map point's bearing (radians, −π‥π) and distance (m) from the plaza's middle. */
+export function lakePlazaPolar(x: number, z: number): [number, number] {
+  const dx = x - LAKE_SHORE.x;
+  const dz = z - LAKE_SHORE.z;
+  return [Math.atan2(dx * PU[0] + dz * PU[1], dx * PF[0] + dz * PF[1]), Math.hypot(dx, dz)];
+}
+
+/** The way something at bearing `phi` faces the plaza's middle (a yaw: radians toward (sin, cos) in x, z). */
+export function lakeFacingIn(phi: number): number {
+  const c = Math.cos(phi);
+  const s = Math.sin(phi);
+  return Math.atan2(-(PF[0] * c + PU[0] * s), -(PF[1] * c + PU[1] * s));
+}
+
+/**
+ * The ring wall round the plaza (a low stone wall, fire pillars on it): its middle line `r` m out, its openings — the
+ * front to the landing and the ghat (|phi| < `front`), the land gate (`LAKE_GATE`), the side way in from the east shore
+ * trail (`LAKE_SIDE`, where the crowd's way reaches the plaza: people/_nyeLakePlan.ts `ENTRY`) — and the two salas,
+ * which stand in its line (`LAKE_SALAS`).
+ */
+export const LAKE_WALL = { r: 21.45, front: 30 * DEG } as const;
+
+/** The land gate: an Angkor gate with Bayon faces on the wall's line at `phi`, `half` m either side of it, `depth` m deep. */
+export const LAKE_GATE = { phi: -160 * DEG, half: 4.4, depth: 3.3 } as const;
+
+/** The paved avenue out from the gate to where the lake trail and the east shore trail meet: from `r0` to `r1` m out along the gate's bearing, `w` m wide. */
+export const LAKE_AVENUE = { phi: LAKE_GATE.phi, r0: LAKE_WALL.r + LAKE_GATE.depth / 2, r1: 45, w: 4.2 } as const;
+
+/** The side way in (an opening between two fire pillars). */
+export const LAKE_SIDE = { phi: -127 * DEG, half: 2.2 } as const;
+
+/** The two salas on the rim either side of the stage (their middles; each faces the plaza's middle; `w` × `d` m). */
+export const LAKE_SALAS: readonly { x: number; z: number; phi: number; facing: number; w: number; d: number }[] = [62, -62].map((d) => {
+  const [x, z] = lakePlazaAt(d * DEG, 22.6);
+  return { x, z, phi: d * DEG, facing: lakeFacingIn(d * DEG), w: 6.4, d: 7.0 };
+});
+
+/** The food stalls inside the ring wall, their backs to it (their middles; each faces the plaza's middle; ≈ 3.4 × 2.6 m). */
+export const LAKE_STALLS: readonly { x: number; z: number; phi: number; facing: number }[] = [84, 106, -84, -104].map((d) => {
+  const [x, z] = lakePlazaAt(d * DEG, 18.6);
+  return { x, z, phi: d * DEG, facing: lakeFacingIn(d * DEG) };
+});
+
+/** The fire pillars on the ring wall (bearings): the two big ones flanking the landing, the rest along the wall's runs. */
+export const LAKE_PILLARS: readonly { phi: number; x: number; z: number; big: boolean }[] = [30, 51.5, 74, 96, 118, 140, 162.5, -30, -51.5, -74, -98, -119, -135].map((d) => {
+  const [x, z] = lakePlazaAt(d * DEG, LAKE_WALL.r);
+  return { phi: d * DEG, x, z, big: Math.abs(d) === 30 };
+});
+
+/** The gold lotus mandala in the plaza's middle (its rim, m: the Kulen ring's painting, nye/_sqRing.ts). */
+export const LAKE_MANDALA = { x: LAKE_SHORE.x, z: LAKE_SHORE.z, r: 8.6 } as const;
+
+/** The lily pond outside the wall, left of the avenue by the gate: an ellipse, `rx` m along its bearing (toward the plaza's middle: `yaw`), `rz` m across. */
+export const LAKE_POND = (() => {
+  const [x, z] = lakePlazaAt(-147 * DEG, 29.5);
+  return { x, z, rx: 3.6, rz: 2.6, yaw: lakeFacingIn(-147 * DEG) };
+})();
 
 /**
  * Between the lake stage and the terrace (with a margin m): the landing, the ghat down the bank and the jetty, in the

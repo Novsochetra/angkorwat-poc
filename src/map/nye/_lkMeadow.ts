@@ -11,7 +11,7 @@ import { palmProto } from '../veg/palms';
 import type { Proto } from '../veg/proto';
 import { broadleaf } from '../veg/species';
 import { BAMBOO, drapedNet, Local, skiff, tone, traps } from '../village/_kit';
-import { LAKE_SHORE, LAKE_VIEW, onLakeLanding, onLakeShore } from './plan';
+import { LAKE_AVENUE, LAKE_POND, LAKE_SHORE, LAKE_VIEW, lakePlazaAt, onLakeLanding, onLakeShore } from './plan';
 import { champa, crown, lilyPad, lotus, type NyeTree } from './_sqGarden';
 import { LATERITE, PAVER, pick } from './_sqKit';
 import { BOUG, BOUG_PURPLE, BUSH_LIT, bushProtos, flowerPatch, grassClump, groundPatch, IXORA, reeds, shrub, stamp, toLine, toPurple, type Line, type MeadowOut, type Shrub } from './_sqMeadow';
@@ -48,11 +48,19 @@ import type { LakeFrame } from './_lkKit';
 /** How far out the garden reaches past the terrace's edge (m). */
 const BAND = 45;
 
-/** The views kept open (map x, z): the crowd camera on the terrace's back, and from the terrace's front, both over the stage. */
+/**
+ * The views kept open (map x, z): the crowd camera on the plaza's back and from the plaza's front, both over the stage;
+ * and the two views over the whole plaza from above its gate side (the owner's free camera, the reference's angle).
+ */
 const SIGHTS: readonly { c: readonly [number, number]; at: readonly [number, number] }[] = [
   { c: [LAKE_VIEW.cam[0], LAKE_VIEW.cam[2]], at: [LAKE_VIEW.at[0], LAKE_VIEW.at[2]] },
   { c: [-352, -54], at: [-372, -25] },
+  { c: [-312, -104], at: [-362, -38] },
+  { c: [-324, -88], at: [-360, -36] },
 ];
+
+/** The avenue from the trails up to the plaza's gate (plan.ts `LAKE_AVENUE`): crowns keep off it, so it is seen. */
+const AVENUE: Line = [lakePlazaAt(LAKE_AVENUE.phi, LAKE_AVENUE.r0), lakePlazaAt(LAKE_AVENUE.phi, LAKE_AVENUE.r1)];
 
 /** The crowd's way in (people/_nyeLakePlan.ts `TRAIL`'s end and its `ENTRY`): kept free of anything solid. */
 const CROWD_WAY: Line = [
@@ -132,7 +140,8 @@ export function growLakeMeadow(b: VoxelBuilder, kit: Kit, glow: Glow, field: Hei
     return onLakeLanding(x, z, 2 + r) || (v < centre[1] - 6 && Math.abs(u) < 15 + r);
   };
   /** Room for something solid of radius `r`. */
-  const solidOk = (x: number, z: number, r: number) => !beforeTerrace(x, z, r) && !onLakeShore(x, z, 1.6 + r) && toLine(CROWD_WAY, x, z) > 2.6 + r && !nearPath(x, z, r + 0.5);
+  const solidOk = (x: number, z: number, r: number) =>
+    !beforeTerrace(x, z, r) && !onLakeShore(x, z, 1.6 + r) && toLine(CROWD_WAY, x, z) > 2.6 + r && !nearPath(x, z, r + 0.5) && toLine(AVENUE, x, z) > LAKE_AVENUE.w / 2 + 2.2 + r && Math.hypot(x - LAKE_POND.x, z - LAKE_POND.z) > LAKE_POND.rx + 1.2 + r * 0.6;
 
   // ── The fishermen's corner (first: the stones lead to it), on the village side (−u) by the bank ──
   const paths: Line[] = [];
@@ -140,11 +149,12 @@ export function growLakeMeadow(b: VoxelBuilder, kit: Kit, glow: Glow, field: Hei
   const corner = fishermen(b, field, fr, bankAt, low, src);
   count('fishermen');
 
-  // ── Stepping stones: from the terrace's rim to the fishermen's nets, and into the west grove ──
-  if (corner) paths.push(stonePath(field, corner.at, corner.from));
+  // ── Stepping stones: from beside the landing (the ring wall closes the plaza's sides) to the fishermen's nets, and
+  // into the west grove ──
+  if (corner) paths.push(stonePath(fr.at(-11.2, bankAt(-11).bank + 0.9), corner.at, corner.from));
   {
     const [wx, wz] = fr.at(27, bankAt(27).bank + 4);
-    paths.push(stonePath(field, [wx, wz], 0));
+    paths.push(stonePath(fr.at(11.2, bankAt(11).bank + 1.2), [wx, wz], 0));
   }
   for (const [pi, p] of paths.entries()) layStones(b, field, p, pi, src);
   count('stones');
@@ -422,19 +432,15 @@ function roomFor(field: HeightField, x: number, z: number, r: number): boolean {
   ].every(([dx, dz]) => field.isFree(x + dx, z + dz));
 }
 
-/** Stepping stones from the terrace's rim (toward `to`) to `to`, bending a little on the way (`bend` m sideways). */
-function stonePath(field: HeightField, to: readonly [number, number], bend: number): Line {
-  const a = Math.atan2(to[1] - LAKE_SHORE.z, to[0] - LAKE_SHORE.x);
-  const [ex, ez] = edgeAt(a);
-  const sx = ex + Math.cos(a) * 1.6;
-  const sz = ez + Math.sin(a) * 1.6;
+/** Stepping stones from `from` to `to`, bending a little on the way (`bend` m sideways). */
+function stonePath(from: readonly [number, number], to: readonly [number, number], bend: number): Line {
+  const [sx, sz] = from;
   const dx = to[0] - sx;
   const dz = to[1] - sz;
   const L = Math.hypot(dx, dz) || 1;
   const nx = -dz / L;
   const nz = dx / L;
   const b = bend || 1.4;
-  void field;
   return [
     [sx, sz],
     [sx + dx * 0.35 + nx * b, sz + dz * 0.35 + nz * b],
@@ -476,7 +482,7 @@ function layStones(b: VoxelBuilder, field: HeightField, p: Line, seed: number, s
 // ── The fishermen's corner ──
 
 /**
- * On the village side of the ghat (u ≈ −24 in the stage's frame) where the bank's top meets the sand: two bamboo frames
+ * On the village side of the ghat (u ≈ −34 in the stage's frame, past the plaza's sala) where the bank's top meets the sand: two bamboo frames
  * with nets drying over their rails, fish traps stacked by them, a low rack of small fish drying on matting, and a
  * skiff pulled up on the sand below, its paddle in it (the floating village's props: village/_kit.ts). Returns where the
  * stones lead (the frames' inland side) and the way they bend, or null if the shore there is not as expected.
@@ -489,7 +495,8 @@ function fishermen(
   low: boolean,
   src: SourceTrace | undefined,
 ): { at: [number, number]; from: number } | null {
-  for (const u of [-25, -28, -22, -31, -19]) {
+  // (past the plaza's west sala and the purple tree by the bank: plan.ts `LAKE_SALAS`)
+  for (const u of [-34, -37, -31, -40]) {
     const { bank, water } = bankAt(u);
     if (bank - water < 1.5) continue;
     const [x, z] = fr.at(u, bank + 3.2);

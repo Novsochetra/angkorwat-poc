@@ -220,6 +220,97 @@ export function lanternPole(b: VoxelBuilder, kit: Kit, bodies: Bodies, glow: Glo
   return { x, y: g + h - 0.15, z };
 }
 
+// ── Fire: in bowls on pillars, braziers ──────────────────────────────────────
+
+/** Flame tones: gold at the heart to deep orange at the tips (the tongues), the embers, the bed of coals. */
+const FLAME = [0xffb444, 0xff9a2a, 0xffc860, 0xff8420, 0xffa838] as const;
+const EMBER = 0xff9a3a;
+const COALS = 0xd8501a;
+/** Bronze: the bowls. */
+export const BRONZE: Tones = [0x5c4430, 0x664c36, 0x6e5238, 0x54402e];
+
+/**
+ * A fire burning in a bowl whose rim is at (x, y, z), `s` its size (1: a bowl ≈ 1 m across): a bed of glowing coals and
+ * a small bright heart (the glowing boxes: a dim ember by day), tongues of flame licking up — thin kit boxes stood on end
+ * and waving as the banners' cloth does, each at its own pace and phase, so the fire flickers (night only; orange, not
+ * white: their glow is kept low) — embers rising and fading (the kit's `ANIM.arc`; not on low), and a halo (the glow's
+ * slow flicker). Every motion is in the kit's shaders: nothing to update.
+ */
+export function fire(kit: Kit, bodies: Bodies, glow: Glow | null, x: number, y: number, z: number, s: number, seed: number, low: boolean): void {
+  const r = (i: number, k: number) => hash3(seed, i, k, 97);
+  bodies.add(x, y + 0.04 * s, z, 0.7 * s, 0.08 * s, 0.7 * s, COALS, 0.75, r(0, 0) * 3);
+  bodies.add(x, y + 0.17 * s, z, 0.28 * s, 0.26 * s, 0.28 * s, 0xffb050, 0.85, r(0, 1) * 3);
+  const n = low ? 4 : 8;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + r(i, 1) * 0.9;
+    const rr = i === 0 ? 0 : (0.1 + 0.15 * r(i, 2)) * s;
+    const h = (i === 0 ? 0.95 : 0.4 + 0.38 * r(i, 3)) * s * (rr > 0.18 * s ? 0.75 : 1);
+    const w = (i === 0 ? 0.2 : 0.11 + 0.08 * r(i, 4)) * s;
+    kit.box(x + Math.cos(a) * rr, y + 0.06 * s + h / 2, z + Math.sin(a) * rr, h, w, w * 0.8, FLAME[(i + Math.floor(r(i, 5) * 5)) % FLAME.length], {
+      roll: Math.PI / 2,
+      yaw: a,
+      anim: ANIM.wave,
+      a: [0.2 + 0.14 * r(i, 6), 0, perPeriod(13 + 12 * r(i, 7))],
+      b: [r(i, 8) * 6.28, 0, 0, 0],
+      glow: 0.8,
+      show: SHOW.night,
+    });
+  }
+  if (!low)
+    for (let i = 0; i < 3; i++) {
+      const period = [2, 2.4, 3][i];
+      kit.box(x + (r(i, 9) - 0.5) * 0.4 * s, y + 0.35 * s, z + (r(i, 10) - 0.5) * 0.4 * s, 0.045, 0.045, 0.045, EMBER, {
+        anim: ANIM.arc,
+        a: [r(i, 11), period, 1.5],
+        b: [(r(i, 12) - 0.5) * 0.3, 0.75 + 0.3 * r(i, 13), (r(i, 14) - 0.5) * 0.3, -0.25],
+        glow: 1.2,
+        show: SHOW.night,
+      });
+    }
+  glow?.add(x, y + 0.45 * s, z, 0xffa040, 3 * s, { level: 0.75 });
+}
+
+/**
+ * A bronze fire bowl standing on (x, y, z) (a pillar's top, a pedestal), `s` its size (1: ≈ 1 m across): a foot, the
+ * bowl flaring out in two courses, a lip; the fire in it (`fire`). Blocks in `b` (stone: solid, it stands on things).
+ */
+export function fireBowl(b: VoxelBuilder, kit: Kit, bodies: Bodies, glow: Glow | null, x: number, y: number, z: number, s: number, seed: number, low: boolean, src: SourceTrace | undefined, ry = 0): void {
+  const t = (k: number) => pick(BRONZE, x, z, k, seed);
+  b.box(x, y + 0.07 * s, z, 0.42 * s, 0.14 * s, 0.42 * s, t(1), 'mapStone', { src, ry, shade: 0.92 });
+  b.box(x, y + 0.22 * s, z, 0.7 * s, 0.16 * s, 0.7 * s, t(2), 'mapStone', { src, ry });
+  b.box(x, y + 0.36 * s, z, 0.92 * s, 0.13 * s, 0.92 * s, t(3), 'mapStone', { src, ry, shade: 1.04 });
+  b.box(x, y + 0.45 * s, z, 1.02 * s, 0.06 * s, 1.02 * s, pick(GOLD, x, z, 4, seed), 'mapStone', { src, ry, shade: 0.9 });
+  fire(kit, bodies, glow, x, y + 0.42 * s, z, s, seed, low);
+}
+
+/**
+ * A lamp post (as on the plaza's rim): a laterite foot, a red-lacquer post `h` m tall, gilt collars, a small Angkor
+ * tower top (corbelled tiers, a gilt bud), and an arm toward `yaw` (radians toward (sin, cos) in x, z) with a tower
+ * lantern hanging from it. Returns the point string lights tie to (under the tower top).
+ */
+export function lampPost(b: VoxelBuilder, kit: Kit, bodies: Bodies, glow: Glow | null, x: number, g: number, z: number, h: number, yaw: number, seed: number, src: SourceTrace | undefined): V3 {
+  b.box(x, g + 0.18, z, 0.56, 0.42, 0.56, pick(LATERITE_LK, x, z, 1, seed), 'mapStone', { src, shade: 0.95 });
+  b.box(x, g + 0.43, z, 0.4, 0.1, 0.4, 0xbfae90, 'mapStone', { src });
+  b.box(x, g + h / 2, z, 0.17, h, 0.17, pick(LACQUER, x, z, 2, seed), 'mapStone', { src });
+  for (const k of [0.3, 0.75]) b.box(x, g + h * k, z, 0.24, 0.1, 0.24, pick(GOLD, x, z, 3 + k, seed), 'mapStone', { src, shade: 1.02 });
+  let y = g + h;
+  for (const [k, w] of [0.36, 0.28, 0.2, 0.12].entries()) {
+    b.box(x, y + 0.06, z, w, 0.12, w, k % 2 ? 0xbfae90 : pick(GOLD, x, z, 6 + k, seed), 'mapStone', { src, shade: 1 + 0.02 * k });
+    y += 0.12;
+  }
+  b.box(x, y + 0.08, z, 0.08, 0.16, 0.08, pick(GOLD, x, z, 11, seed), 'mapStone', { src, shade: 1.1 });
+  // The arm and its lantern.
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  const ay = g + h - 0.35;
+  b.box(x + fx * 0.42, ay, z + fz * 0.42, 0.84, 0.08, 0.08, pick(LACQUER, x, z, 12, seed), 'mapStone', { src, ry: yaw - Math.PI / 2 });
+  towerLantern(b, kit, bodies, glow, x + fx * 0.78, ay - 0.04, z + fz * 0.78, 0.3, seed, src, yaw);
+  return { x, y: g + h - 0.1, z };
+}
+
+/** Laterite (the posts' feet: the Kulen square's, `_sqKit.ts`). */
+const LATERITE_LK: Tones = [0x9c6d50, 0x916349, 0xa67858, 0x8a5e46];
+
 // ── Banners: red cloth with the white Angkor Wat, hanging from a bar ──────────
 
 const BANNER_RED = 0xb8141c;
