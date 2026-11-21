@@ -2501,7 +2501,10 @@ l-ref `cam=-324,18,-88,-360,6,-36,55`; fireworks `fireworks=<s>&cam=384,11,-248,
   grid, its avenue between naga (not on low), braziers, banners and Khmer lamps; a side way in at −127°; two Khmer salas
   at ±62° lit inside; four stalls (shops `nye-lake-grill|fruit|drinks|sweets`, a seller on each stool); purple beds, a
   lily pond with lotus candles, pink and purple trees framing the stage. The plaza's real light stands low before the gate.
-  Walking into the 0.9 m wall stops him, but sliding along it the walker's `carried` rule can step him onto it.
+  Its low stonework (the ring wall's runs, the naga's pedestals, the pond's kerb, the salas' tables and bench, the
+  stalls' counters: plan.ts `lakeWallRuns`, `LAKE_NAGA`, `LAKE_SALA_FURNITURE`, `LAKE_STALL_COUNTER`) is laid over
+  `standAt` as walls to his feet by `roam/_nyePlazaWalk.ts` (only while the `nye` part stands, within 36 m), as the zip
+  line's rails and his built pieces are: sliding along the 0.9 m wall never ends on top.
 - **The lake stage and water** (`_lkStage.ts`, `_lkBoats.ts`, `_lkReflect.ts`): a deep carved gate over a 10 × 5 m board
   under three lotus-bud towers outlined in dim bulbs, two big naga either side of the board, `kitFire` fire bowls,
   banners on tall poles; the event night's flotilla (84 lantern skiffs, 10 lotus floats, 2 illuminated floats with
