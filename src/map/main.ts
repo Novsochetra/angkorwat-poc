@@ -1271,6 +1271,22 @@ if (shot) {
   /** The loop's state, for checks (scripts/idle.mjs): frames drawn, the pace now. */
   const loop = { drawn: 0, fps: frameCap.fps, mode: 'full' as LoopMode | 'waiting' };
   Object.assign(window, { __loop: loop, __phoneRate: phoneRate });
+  // (the frame rate panel: the 📈 FPS button on the dev server, `?stats=1` on any page: dev/stats.ts)
+  let stats: import('./dev/stats').FrameStats | null = null;
+  if (!shot && (devTools || params.get('stats') === '1'))
+    void import('./dev/stats').then(({ installStats }) => {
+      stats = installStats({
+        renderer,
+        loop: () => loop,
+        graphics: () => `${graphicsNow.level}${settings.graphics === 'auto' ? ' (auto)' : ''} · ${canvas.width}×${canvas.height}`,
+        sound: () => {
+          const d = audio.debug?.();
+          return d && d.state !== 'none' ? { rate: d.rate, state: d.state } : null;
+        },
+        button: devTools,
+        open: params.get('stats') === '1',
+      });
+    });
   /** The last frame was at full pace (the resolution and auto's watch measure only such frames). */
   let wasFull = false;
   /** Roaming at the last frame (a phone tries 60 again as it starts or ends: graphics.ts `PhoneFrameRate`). */
@@ -1311,6 +1327,7 @@ if (shot) {
     // (the free camera can stand the scene's time still: the clock loses the seconds it stood, and goes on from there)
     const still = free?.frozen === true;
     if (still) stoodStill += raw;
+    stats?.begin();
     // (the first frame's time can come a hair before t0)
     if (!feedback?.active) step(Math.max(0, (now - t0) / 1000 - stoodStill), still ? 0 : dt);
     // (while the story hides the whole map, the map is not drawn: story/story.ts)
@@ -1344,6 +1361,7 @@ if (shot) {
       post.render(frame);
     }
     for (const p of parts) p.afterRender?.();
+    stats?.end(now, drawn);
     feedback?.update();
     if (first) {
       first = false;
