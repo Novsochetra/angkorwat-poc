@@ -14,7 +14,7 @@ import { course, fireBowl, khmerLamp, Mason2, pick, StageGlow } from './_stKit';
 import { buildBoard, KULEN_BOARD } from './board';
 import { boardLights } from './_far';
 import type { NyePiece } from './index';
-import { BOARD, GROUND, NAGA, STAGE } from './plan';
+import { BOARD, GROUND, NAGA, STAGE, VIEW } from './plan';
 
 /**
  * The stage of the New Year's Eve square (AWP-35, docs/discussion/new-year-online.md "The countdown board and
@@ -161,7 +161,9 @@ export function buildNyeStage(ctx: MapContext): NyePiece {
   const V = (x: number, y: number, z: number) => new Vector3(x, y, z);
   void trackSacred(
     Promise.all([nagaFanReady('stair'), nagaFanReady('stairFar')]).then(() => {
-      const fans = NAGA.map((n) => ({ at: V(n.x, fanY, n.z), look: V(Math.sin(n.facing), 0, Math.cos(n.facing)), height: fanH }));
+      // (their faces — sacred/naga.ts's +z: the seven heads before the smooth fan — to the square, each squared to the
+      // crowd's view (`VIEW`) rather than due south: a few degrees inward, guardians either side of the stair)
+      const fans = NAGA.map((n) => ({ at: V(n.x, fanY, n.z), look: V(VIEW.cam[0] - n.x, 0, VIEW.cam[2] - n.z).normalize(), height: fanH }));
       const bodies = NAGA.map((n) => {
         const s = outward(n);
         const end = s < 0 ? STAGE.x0 + 1.7 : STAGE.x1 - 1.7;
