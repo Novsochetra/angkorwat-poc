@@ -1,6 +1,7 @@
 import {
   AdditiveBlending,
   BoxGeometry,
+  type BufferGeometry,
   BufferAttribute,
   Color,
   DoubleSide,
@@ -13,7 +14,6 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
-  MeshLambertMaterial,
   NearestFilter,
   Quaternion,
   RGBAFormat,
@@ -23,6 +23,7 @@ import {
   Vector3,
   Vector4,
 } from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { graphicsNow } from '../graphics';
 import { PX_SCALE, view } from '../resolution';
 import { hazeUniforms } from '../sky/haze';
@@ -53,13 +54,14 @@ import { ANGKOR_POINTS, angkorShape } from './_fwAngkor';
  * The New Year's Eve fireworks (AWP-35): the show's script (show.ts) drawn over Phnom Kulen's east flank and over the
  * great lake behind the lake stage (two sites, one clock: `Rocket.site`), played from the real clock (clock.ts
  * `showTime`; `fireworks=<s>` holds it at second s in a shot). The lake's are fired from a line of barges, each with a
- * lantern (`LAKE_BARGES`: two instanced draws, there from when the part is built).
+ * lantern (`LAKE_BARGES`: dark hulls in one unlit instanced draw, their lanterns' glow and streaks on the water in the
+ * show's draw; there from when the part is built).
  *
  * GPU-driven: each frame the rockets in the air (launched, their sparks, glow or smoke not yet gone) go into a
  * small float texture, a line each (`_fwShaders.ts`: where it bursts, when, its kind, colours, size, seed); every
  * spark is placed in the vertex shader from its rocket's line, its index and the time (ballistic with drag and
  * gravity: nothing per spark on the CPU, so a held moment looks as it would live). One additive draw for all of it,
- * its instances in three runs:
+ * its instances in four runs:
  *  - the sparks: `PER[level]` instances a rocket (each its spark count at this level, the rest hidden), a ribbon
  *    streaked along its path for its trail (a willow's long and bending as it droops); a palm's few thick arms, a
  *    comet's glittering tail shed as it climbs, a crossette's stars popping into white-gold pieces, the signature's
@@ -69,7 +71,9 @@ import { ANGKOR_POINTS, angkorShape } from './_fwAngkor';
  *    air round it (the haze lit in its colour), its smoke drifting, lit by the bursts after it (not on low);
  *  - the reflections: under each burst a column of glints on the great lake, the Kulen pool and the stream by the
  *    square (a wedge from the eye along the water toward the burst, a rocket and stretch of water, hidden where it
- *    misses the water; each point as bright as a ripple there would turn the burst to the eye).
+ *    misses the water; each point as bright as a ripple there would turn the burst to the eye);
+ *  - the barges' lanterns: a warm glow at each and its streak on the water toward the camera, broken by ripples (as
+ *    the lake venue's lights, nye/_lkReflect.ts), whenever the barges are in the picture, the show on or not.
  * Additive, no depth write, the map's haze. Light on the world: two lamps (sky/lampSlots.ts), the brightest burst
  * now and the rest of them together, in their colours, light the hill, the square and its crowd (or the lake, its stage
  * and the shore); and the sky (sky/tint.ts `SKY_TINT`): the haze, the low sky and the clouds round the show take the
@@ -102,6 +106,10 @@ const LAMP_POWER = 30000;
 /** The halos' and sparks' look: the water near the square (m) its reflections are drawn on. */
 const WATER_REACH = 170;
 const MAX_SPOTS = 12;
+/** The barges' lanterns the shader holds (`uBarge`), their height over the water and how far astern of the middle (m). */
+const MAX_BARGES = 24;
+const BARGE_LANTERN = 3.1;
+const BARGE_STERN = 2.8;
 
 const COLOURS = Object.fromEntries(Object.entries(SHOW_COLOURS).map(([k, hex]) => [k, new Color(hex)])) as Record<ShowColour, Color>;
 
@@ -200,6 +208,8 @@ export function buildFireworks(ctx: MapContext): MapPart {
   }
   const spots = spotB.filter((b) => b.y > -999).length;
 
+  // (each barge's lantern: x, y, z and the water's level under it; set with the barges below)
+  const bargeAt = Array.from({ length: MAX_BARGES }, () => new Vector4(0, -1000, 0, 0));
   const material = new ShaderMaterial({
     name: 'fireworks',
     transparent: true,
@@ -223,6 +233,8 @@ export function buildFireworks(ctx: MapContext): MapPart {
       uLightPos: { value: lightPos },
       uLightCol: { value: lightCol },
       uSpots: { value: Math.max(1, spots) },
+      uWaterN: { value: 0 },
+      uBarge: { value: bargeAt },
       uSpotA: { value: spotA },
       uSpotB: { value: spotB },
     },
@@ -264,13 +276,28 @@ export function buildFireworks(ctx: MapContext): MapPart {
   fx.matrixAutoUpdate = false;
   object.add(fx);
 
-  // ── The lake show's barges: a dark low pontoon each, a lantern on a short pole at its stern (two instanced draws).
-  {
+  // ── The lake show's barges: a dark low pontoon each, a lantern on a pole at its stern; one unlit instanced draw
+  // (dark against the water, as the lantern boats round them, never pale under the moon). The lantern's warm glow and
+  // its streak on the water are the show's draw's last run (`bargeLit`), from when the part is built, while the barges
+  // are in the picture.
+  const barges = (() => {
     const n = LAKE_BARGES.length;
-    const hulls = new InstancedMesh(new BoxGeometry(3.2, 0.9, 7.5), new MeshLambertMaterial({ color: 0x3a2c22 }), n);
-    const lights = new InstancedMesh(new BoxGeometry(0.5, 0.7, 0.5), new MeshBasicMaterial({ color: 0xffb760 }), n);
-    hulls.name = 'fireworks:barges';
-    lights.name = 'fireworks:barge-lanterns';
+    const tint = (g: BufferGeometry, c: Color) => {
+      const k = g.getAttribute('position').count;
+      const col = new Float32Array(k * 3);
+      for (let i = 0; i < k; i++) col.set([c.r, c.g, c.b], i * 3);
+      g.setAttribute('color', new BufferAttribute(col, 3));
+      return g;
+    };
+    // (linear: a near-black tarred hull, a dark pole, the lantern's gold glass; no haze: 150‥250 m off the haze is the
+    // pale night mist, and a hazed hull read as a pale rectangle on the deep blue water)
+    const parts = [
+      tint(new BoxGeometry(3.2, 0.9, 7.5), new Color(0.016, 0.011, 0.008)),
+      tint(new BoxGeometry(0.14, BARGE_LANTERN - 0.7, 0.14).translate(0, (BARGE_LANTERN - 0.7) / 2 + 0.45, BARGE_STERN), new Color(0.02, 0.012, 0.008)),
+      tint(new BoxGeometry(0.42, 0.56, 0.42).translate(0, BARGE_LANTERN - 0.25, BARGE_STERN), new Color(0.85, 0.36, 0.08)),
+    ];
+    const mesh = new InstancedMesh(mergeGeometries(parts) ?? parts[0], new MeshBasicMaterial({ vertexColors: true, fog: false }), n);
+    mesh.name = 'fireworks:barges';
     const mat = new Matrix4();
     const q = new Quaternion();
     const up = new Vector3(0, 1, 0);
@@ -279,17 +306,16 @@ export function buildFireworks(ctx: MapContext): MapPart {
     LAKE_BARGES.forEach((b, i) => {
       const level = field.waterAt(b.x, b.z) ?? 5;
       q.setFromAxisAngle(up, b.yaw);
-      hulls.setMatrixAt(i, mat.compose(at.set(b.x, level + 0.25, b.z), q, one));
-      lights.setMatrixAt(i, mat.compose(at.set(b.x + Math.sin(b.yaw) * 2.8, level + 2.2, b.z + Math.cos(b.yaw) * 2.8), q, one));
+      mesh.setMatrixAt(i, mat.compose(at.set(b.x, level + 0.25, b.z), q, one));
+      bargeAt[i]?.set(b.x + Math.sin(b.yaw) * BARGE_STERN, level + BARGE_LANTERN, b.z + Math.cos(b.yaw) * BARGE_STERN, level);
     });
-    for (const m of [hulls, lights]) {
-      m.computeBoundingSphere();
-      m.raycast = () => {};
-      m.matrixAutoUpdate = false;
-      m.frustumCulled = true;
-      object.add(m);
-    }
-  }
+    mesh.computeBoundingSphere();
+    mesh.raycast = () => {};
+    mesh.matrixAutoUpdate = false;
+    mesh.frustumCulled = true;
+    object.add(mesh);
+    return mesh;
+  })();
 
   // ── Light on the world: the brightest burst now, and the rest together (the explorer's own lamps' rank: a burst's
   // light comes at once, as a flash does, never eased in over the slots' 0.45 s; only while the show lights them).
@@ -352,11 +378,21 @@ export function buildFireworks(ctx: MapContext): MapPart {
     update(f: MapFrame) {
       const c0 = performance.now();
       const s = nowInShow(f);
+      const level = graphicsNow.level;
+      // (the scene's height in pixels: the sparks' least width is in screen pixels, pxscale= grows it)
+      ctx.renderer.getDrawingBufferSize(buf);
+      // (low: no bloom, fewer sparks: each a little wider and brighter)
+      viewU.set((buf.y * view.scene) / view.canvas, PX_SCALE * (level === 'low' ? 1.35 : 1), Math.min(1.8, Math.sqrt(1 / LEVEL_SPARKS[level])) ** 0.6, f.night);
+      frustum.setFromProjectionMatrix(viewProj.multiplyMatrices(f.camera.projectionMatrix, f.camera.matrixWorldInverse));
+      // (the barges' lanterns glow and streak the water whenever the barges are in the picture)
+      const bargeLit = barges.boundingSphere && frustum.intersectsSphere(barges.boundingSphere) ? Math.min(LAKE_BARGES.length, MAX_BARGES) * 2 : 0;
       if (s === null) {
-        // (shown for the first frames all the same, drawing nothing: their shaders compile at load)
-        fx.visible = warm > 0;
+        // (shown for the first frames all the same, drawing nothing but the lanterns: their shaders compile at load)
+        fx.visible = warm > 0 || bargeLit > 0;
         if (warm > 0) warm--;
-        geo.instanceCount = 0;
+        u.uTime.value = (performance.now() / 1000) % 600;
+        u.uSparkN.value = u.uHaloN.value = u.uWaterN.value = 0;
+        geo.instanceCount = bargeLit;
         lampsOff();
         return;
       }
@@ -366,12 +402,7 @@ export function buildFireworks(ctx: MapContext): MapPart {
         const camera = f.camera;
         void import('./_fwStats').then((m) => m.logShowStats(camera, field, new URLSearchParams(location.search).get('cam') ?? 'camera', SPARK_LIFE, SMOKE_LIFE));
       }
-      const level = graphicsNow.level;
       u.uTime.value = s;
-      // (the scene's height in pixels: the sparks' least width is in screen pixels, pxscale= grows it)
-      ctx.renderer.getDrawingBufferSize(buf);
-      // (low: no bloom, fewer sparks: each a little wider and brighter)
-      viewU.set((buf.y * view.scene) / view.canvas, PX_SCALE * (level === 'low' ? 1.35 : 1), Math.min(1.8, Math.sqrt(1 / LEVEL_SPARKS[level])) ** 0.6, f.night);
 
       // The rockets in the air: launched, their last light (smoke, or sparks on low) not yet gone; on low a site's
       // small low ones only near it.
@@ -388,7 +419,6 @@ export function buildFireworks(ctx: MapContext): MapPart {
       // nearest in front of it counts in full)
       const dNear = Math.min(dist.kulen, dist.lake);
       f.camera.getWorldDirection(fwd);
-      frustum.setFromProjectionMatrix(viewProj.multiplyMatrices(f.camera.projectionMatrix, f.camera.matrixWorldInverse));
       const [right, left, , , , nearPlane] = frustum.planes;
       let most = 0;
       for (const site of SITES) {
@@ -488,7 +518,8 @@ export function buildFireworks(ctx: MapContext): MapPart {
       u.uSmoke.value = smoke ? 1 : 0;
       u.uSparkN.value = (n - first) * per;
       u.uHaloN.value = n * 4;
-      geo.instanceCount = (n - first) * per + n * 4 + n * Math.max(1, spots);
+      u.uWaterN.value = n * Math.max(1, spots);
+      geo.instanceCount = (n - first) * per + n * 4 + n * Math.max(1, spots) + bargeLit;
 
       // Lamps: the brightest burst, and the rest of them where their light is, in their colours.
       const dim = 0.35 + 0.65 * f.night;
@@ -536,7 +567,7 @@ export function buildFireworks(ctx: MapContext): MapPart {
         if (++frames === 24 && ctx.shot)
           console.info(
             `[map] fireworks: ${(cpu / 24).toFixed(3)} ms a frame (CPU, average of 24) at ${s.toFixed(1)} s · ${alive.length} rockets in the air, ${n} drawn (most ${peak}; light: Kulen ${weight.kulen.toFixed(2)}, the lake ${weight.lake.toFixed(2)}), ` +
-              `${u.uSparkN.value} spark + ${u.uHaloN.value} halo + ${geo.instanceCount - u.uSparkN.value - u.uHaloN.value} water instances (one draw) on ${level}`,
+              `${u.uSparkN.value} spark + ${u.uHaloN.value} halo + ${u.uWaterN.value} water + ${bargeLit} lantern instances (one draw) on ${level}`,
           );
       }
     },

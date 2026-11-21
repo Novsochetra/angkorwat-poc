@@ -2,9 +2,10 @@
  * The fireworks' shaders (fireworks.ts): every spark, trail, flash, glow and puff of smoke placed in the vertex
  * shader from its rocket's row in the data texture and the show's time, nothing per spark on the CPU, and the water's
  * glitter under each burst; all in ONE instanced draw (the instance's number says which: the sparks first, then four
- * halos a rocket, then a glitter column a rocket and stretch of water). Kinds are tables (`KA`, `KB`, `KC`, indexed by
+ * halos a rocket, then a glitter column a rocket and stretch of water, then the barges' lanterns: a glow and a streak on
+ * the water each). Kinds are tables (`KA`, `KB`, `KC`, indexed by
  * the kind), never chains of `if` (shaders of slow drivers compile quickly: CLAUDE.md, commit b250279): the three parts
- * are one branch each.
+ * are one branch each (the lanterns a fourth).
  *
  * The data texture (`uData`, RGBA float, `ROW` texels a rocket, a rocket a line):
  *  0: burst point xyz, burst time (s into the show)
@@ -67,10 +68,14 @@ export const FW_VERTEX = /* glsl */ `
   uniform float uSpots;
   uniform vec4 uSpotA[12];
   uniform vec4 uSpotB[12];
+  // The columns drawn (the rest: the lanterns), and each barge's lantern (x, y, z, the water's level under it).
+  uniform float uWaterN;
+  uniform vec4 uBarge[24];
   varying vec3 vCol;
   // A ribbon's (side, cap); a glitter column's (across −1‥1, along 0 near ‥ 1 under the burst).
   varying vec2 vQ;
-  // A ribbon's softness; −1 on the water. Its bright heart's share (none for the glow and the smoke).
+  // A ribbon's softness; −1 a glitter column on the water, −2 a lantern's streak. Its bright heart's share (none for the
+  // glow and the smoke).
   varying float vSoft;
   varying float vCore;
   // The water: its stretch, the burst's point and the water's level, (the stretch's half width, the seed, the eye
@@ -179,10 +184,47 @@ export const FW_VERTEX = /* glsl */ `
     return mix(l, b, 1.0 - (1.0 - s) * (1.0 - s));
   }
 
+  // A barge's lantern (instance k among them: two a barge): 0 its warm glow, a soft round halo a little bigger far off
+  // (a light seen through the night air), 1 its streak on the water from under it toward the camera, long seen low, short
+  // seen from above, broken into ripples in the fragment (as the lake venue's lights: nye/_lkReflect.ts).
+  void lantern(int k) {
+    int bi = k / 2;
+    vec4 bl = uBarge[bi];
+    float streak = float(k - bi * 2);
+    float fl = 0.9 + 0.1 * sin(uTime * 7.3 + float(bi) * 1.7) * sin(uTime * 3.1 + float(bi) * 0.9);
+    // (gold, as the lantern boats': never white)
+    vec3 warm = vec3(1.0, 0.48, 0.1) * fl * (0.3 + 0.7 * uView.w);
+    vec3 c = cameraPosition;
+    vec4 halo = viewMatrix * vec4(bl.xyz, 1.0);
+    halo.xy += vec2(position.x, position.z) * 1.5 * sqrt(max(1.0, -halo.z / 60.0));
+    vec2 toCam = c.xz - bl.xz;
+    float dist = max(length(toCam), 1e-3);
+    vec2 dir = toCam / dist;
+    float len = min((1.7 * (bl.y - bl.w) + 0.6) * dist / max(c.y - bl.w, 1.5), dist * 0.6);
+    vec2 xz = bl.xz + dir * (position.y * len) + vec2(-dir.y, dir.x) * (position.x * (0.7 + dist * 0.0025));
+    vec4 onWater = viewMatrix * vec4(xz.x, bl.w + 0.08, xz.y, 1.0);
+    vec4 mvPosition = mix(halo, onWater, streak);
+    gl_Position = projectionMatrix * mvPosition;
+    vQ = mix(vec2(position.x, position.z), vec2(position.x, position.y), streak);
+    vSoft = mix(2.6, -2.0, streak);
+    vCore = 0.6 * (1.0 - streak);
+    vCol = warm * mix(0.38, 1.5, streak);
+    vSeg = vec4(0.0);
+    vB = vec4(0.0);
+    vHalf = vec3(0.0, float(bi) * 0.37, 0.0);
+    vXZ = vec2(0.0);
+    #include <fog_vertex>
+  }
+
   void main() {
     int sparkN = int(uSparkN + 0.5);
     int haloN = int(uHaloN + 0.5);
     int id = gl_InstanceID;
+    int waterN = int(uWaterN + 0.5);
+    if (id >= sparkN + haloN + waterN) {
+      lantern(id - sparkN - haloN - waterN);
+      return;
+    }
     if (id >= sparkN + haloN) {
       water(id - sparkN - haloN);
       return;
@@ -403,7 +445,20 @@ export const FW_FRAGMENT = /* glsl */ `
   varying vec2 vXZ;
   void main() {
     vec3 col;
-    if (vSoft < 0.0) {
+    if (vSoft < -1.5) {
+      // A lantern's streak: bright dashes drifting toward the viewer with dark water between, a soft edge across.
+      float s = vQ.y;
+      float x = vQ.x;
+      float r1 = 0.5 + 0.5 * sin(s * 44.0 - uTime * 2.4 + vHalf.y * 20.0);
+      float r2 = 0.5 + 0.5 * sin(s * 17.0 + uTime * 1.05 + vHalf.y * 9.0);
+      float broken = smoothstep(0.3, 0.9, r1 * 0.7 + r2 * 0.45);
+      float across = exp(-x * x * (2.2 + 3.5 * (1.0 - broken)));
+      float along = smoothstep(0.0, 0.06, s) * pow(clamp(1.0 - s, 0.0, 1.0), 1.25);
+      col = vCol * along * across * (0.25 + 0.95 * broken);
+      #ifdef USE_FOG
+        col *= 1.0 - 0.8 * hazeDistance(length(vFogWorld - cameraPosition));
+      #endif
+    } else if (vSoft < 0.0) {
       // The water: inside its stretch; each point as bright as a ripple there would turn the burst to the eye
       // (the half way between them from the water's up: slopes ≈ 0.35 rad on a breezy night), glints across the
       // column (in the eye's angle down to it, so they are even on the screen), a soft wedge across.
