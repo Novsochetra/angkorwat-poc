@@ -1,8 +1,10 @@
 /**
  * The fireworks' shaders (fireworks.ts): every spark, trail, flash, glow and puff of smoke placed in the vertex
- * shader from its rocket's row in the data texture and the show's time, nothing per spark on the CPU. Kinds are
- * tables (`KA`, `KB`, `KC`, indexed by the kind), never chains of `if` (shaders of slow drivers compile quickly:
- * CLAUDE.md, commit b250279).
+ * shader from its rocket's row in the data texture and the show's time, nothing per spark on the CPU, and the water's
+ * glitter under each burst; all in ONE instanced draw (the instance's number says which: the sparks first, then four
+ * halos a rocket, then a glitter column a rocket and stretch of water). Kinds are tables (`KA`, `KB`, `KC`, indexed by
+ * the kind), never chains of `if` (shaders of slow drivers compile quickly: CLAUDE.md, commit b250279): the three parts
+ * are one branch each.
  *
  * The data texture (`uData`, RGBA float, `ROW` texels a rocket, a rocket a line):
  *  0: burst point xyz, burst time (s into the show)
@@ -40,11 +42,15 @@ const COMMON = /* glsl */ `
   }
 `;
 
-/** The sky's sparks and halos: `uMode` 0 the sparks (`uPer` a rocket, from line `uFirst`), 1 the four halos a rocket. */
-export const SKY_VERTEX = /* glsl */ `
+/**
+ * The show in one draw: instances [0, `uSparkN`) the sparks (`uPer` a rocket, from line `uFirst`), then `uHaloN` the
+ * four halos a rocket, then the water's glitter columns (`uSpots` a rocket: one a stretch of water).
+ */
+export const FW_VERTEX = /* glsl */ `
   #include <fog_pars_vertex>
   ${COMMON}
-  uniform float uMode;
+  uniform float uSparkN;
+  uniform float uHaloN;
   uniform float uPer;
   uniform float uFirst;
   // Smoke drawn (1) or not (0: low).
@@ -57,25 +63,99 @@ export const SKY_VERTEX = /* glsl */ `
   // The signature's picture: its points (x, y, outline, tower), how many.
   uniform sampler2D uShape;
   uniform float uShapeN;
+  // The water that mirrors them: each stretch a segment (x0, z0, x1, z1) and (half width, water level, -, -); how many.
+  uniform float uSpots;
+  uniform vec4 uSpotA[12];
+  uniform vec4 uSpotB[12];
   varying vec3 vCol;
+  // A ribbon's (side, cap); a glitter column's (across −1‥1, along 0 near ‥ 1 under the burst).
   varying vec2 vQ;
+  // A ribbon's softness; −1 on the water. Its bright heart's share (none for the glow and the smoke).
   varying float vSoft;
+  varying float vCore;
+  // The water: its stretch, the burst's point and the water's level, (the stretch's half width, the seed, the eye
+  // over the water), the point on the water.
+  varying vec4 vSeg;
+  varying vec4 vB;
+  varying vec3 vHalf;
+  varying vec2 vXZ;
+
+  float segDist(vec2 p, vec4 sg) {
+    vec2 a = sg.xy;
+    vec2 ab = sg.zw - a;
+    float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
+    return length(p - a - ab * t);
+  }
+
+  // The water under a burst (instance id among the columns): ripples mirror it as a column of glints from near the
+  // eye, where still water would show it, out to the water under it; the fragment weighs each point by the ripple's
+  // tilt it needs (the half way between the burst and the eye from the water's up), so a burst high over the water
+  // glitters nearer, a low one out to the horizon.
+  void water(int id) {
+    int ns = int(uSpots + 0.5);
+    int slot = id / ns;
+    int k = id - slot * ns;
+    vec4 d0 = rk(slot, 0);
+    vec4 d2 = rk(slot, 2);
+    vec4 d3 = rk(slot, 3);
+    vec4 d4 = rk(slot, 4);
+    vec4 sa = uSpotA[k];
+    vec4 sb = uSpotB[k];
+    float level = sb.y;
+    vec3 c = cameraPosition;
+    vec3 b = d0.xyz;
+    float hc = c.y - level;
+    float H = max(b.y - level, 1.0);
+    vec2 g = b.xz - c.xz;
+    float D = max(length(g), 4.0);
+    vec2 dir = g / D;
+    vec2 sideV = vec2(-dir.y, dir.x);
+    float xm = D * max(hc, 0.1) / (H + max(hc, 0.1));
+    float x0 = max(xm * 0.4, 2.0);
+    float x = mix(x0, D, position.y);
+    // (as wide as a share of the burst seen from here: a wedge from the eye)
+    float aw = 0.4 * d3.w / max(length(b - c), 1.0) + 0.004;
+    vec2 xz = c.xz + dir * x + sideV * (position.x * x * aw);
+    vec4 mvPosition = viewMatrix * vec4(xz.x, level + 0.1, xz.y, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    float tau = uTime - d0.w;
+    // (the water mirrors the burst's sparks as long as they glow, not only its flash: a slower curve than its light)
+    float wl = KL[int(d2.w + 0.5)];
+    float lp = tau < 0.0 ? 0.0 : d4.w * (0.5 * exp(-tau / 0.09) + 0.5 * exp(-tau / 1.2) + wl * 0.45 * exp(-tau / 2.6));
+    vCol = mix(d2.rgb, vec3(1.0), 0.2) * lp * 3.0 * (0.4 + 0.6 * uView.w);
+    vQ = vec2(position.x, position.y);
+    vSoft = -1.0;
+    vCore = 0.0;
+    vSeg = sa;
+    vB = vec4(b, level);
+    vHalf = vec3(sb.x, d4.x, hc);
+    vXZ = xz;
+    #include <fog_vertex>
+    // (hidden: the eye under the water, no light, the column nowhere near this stretch)
+    float near = 1e9;
+    for (int i = 0; i < 5; i++) near = min(near, segDist(c.xz + dir * mix(x0, D, float(i) * 0.25), sa));
+    float miss = near - sb.x - D * aw - 0.13 * (D - x0);
+    if (hc < 0.2 || lp < 0.003 || miss > 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+  }
 
   // Per kind (peony, chrysanthemum, willow, crackle, ring, palm, comet, angkor):
   // KA: drag (1/s), gravity (share of g), life (s), trail (s)
-  const vec4 KA[8] = vec4[8](vec4(2.6, 1.0, 2.4, 0.13), vec4(2.2, 1.0, 2.9, 0.5), vec4(1.3, 1.7, 6.4, 1.8), vec4(3.4, 0.5, 1.7, 0.07), vec4(2.6, 0.7, 2.4, 0.15),
-    vec4(1.5, 1.4, 3.9, 1.1), vec4(2.0, 0.35, 1.7, 0.12), vec4(4.5, 0.9, 4.6, 0.3));
-  // KB: width (m), brightness, embers from (share of life), speed spread
-  const vec4 KB[8] = vec4[8](vec4(0.6, 2.6, 0.55, 0.07), vec4(0.5, 2.2, 0.45, 0.1), vec4(0.4, 0.72, 0.5, 0.3), vec4(0.4, 1.3, 0.95, 0.6), vec4(0.6, 2.6, 0.55, 0.04),
-    vec4(1.0, 2.0, 0.55, 0.0), vec4(0.5, 1.9, 0.5, 0.25), vec4(1.3, 3.0, 0.7, 0.0));
+  // (the trails long: streaks from the burst's heart out to each star, as the reference's chrysanthemums)
+  const vec4 KA[8] = vec4[8](vec4(2.6, 1.0, 2.9, 0.4), vec4(2.2, 1.0, 3.4, 0.95), vec4(1.3, 1.7, 6.4, 2.1), vec4(3.4, 0.5, 1.7, 0.07), vec4(2.6, 0.7, 2.8, 0.32),
+    vec4(1.5, 1.4, 3.9, 1.25), vec4(2.0, 0.35, 1.7, 0.12), vec4(4.5, 0.9, 5.2, 0.3));
+  // KB: width (m, for a 40 m burst: bigger shells have bigger stars), brightness, embers from (share of life), speed spread
+  const vec4 KB[8] = vec4[8](vec4(0.8, 2.1, 0.6, 0.07), vec4(0.7, 1.9, 0.5, 0.1), vec4(0.6, 0.85, 0.5, 0.3), vec4(0.5, 1.3, 0.95, 0.6), vec4(0.75, 2.1, 0.6, 0.04),
+    vec4(1.2, 1.8, 0.55, 0.0), vec4(0.5, 1.9, 0.5, 0.25), vec4(1.35, 3.0, 0.7, 0.0));
   // KC: a ring (1), crackles (1), flicker, a trail's tail brightness
   const vec4 KC[8] = vec4[8](vec4(0.0, 0.0, 0.12, 0.25), vec4(0.0, 0.0, 0.3, 0.12), vec4(0.0, 0.0, 0.25, 0.04), vec4(0.0, 1.0, 0.0, 0.3), vec4(1.0, 0.0, 0.12, 0.25),
     vec4(0.0, 0.0, 0.15, 0.2), vec4(0.0, 0.0, 0.65, 0.3), vec4(0.0, 0.0, 0.1, 0.4));
-  // KD: how quickly it fades (the brightness's power of the life left)
+  // KD: how quickly it fades (the brightness's power of the life left); KH: burning steady until this share of its
+  // life (a star burns, then goes out: a still picture catches most bursts bright, as the reference's)
   const float KD[8] = float[8](1.4, 1.2, 0.7, 1.0, 1.4, 0.8, 1.0, 0.55);
+  const float KH[8] = float[8](0.45, 0.4, 0.0, 0.0, 0.45, 0.3, 0.3, 0.35);
   // KE: arms (1: a palm's few thick arms), shed (1: a comet's tail, shed as it climbs), picture (1: the signature's
   // points), held (s before gravity takes it: the picture stays crisp)
-  const vec4 KE[8] = vec4[8](vec4(0.0), vec4(0.0), vec4(0.0), vec4(0.0), vec4(0.0), vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 1.25));
+  const vec4 KE[8] = vec4[8](vec4(0.0), vec4(0.0), vec4(0.0), vec4(0.0), vec4(0.0), vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 1.9));
   // KF: the climbing shell's look: width (m), its trail (s), its own colour (share, else warm white), brightness
   const vec4 KF[8] = vec4[8](vec4(0.42, 0.55, 0.0, 1.0), vec4(0.42, 0.55, 0.0, 1.0), vec4(0.42, 0.55, 0.0, 1.0), vec4(0.42, 0.55, 0.0, 1.0), vec4(0.42, 0.55, 0.0, 1.0),
     vec4(1.1, 0.9, 0.15, 1.7), vec4(1.7, 0.3, 0.8, 2.6), vec4(0.8, 0.8, 0.0, 1.5));
@@ -100,9 +180,19 @@ export const SKY_VERTEX = /* glsl */ `
   }
 
   void main() {
-    int per = int(uPer + 0.5);
-    int slot = int(uFirst + 0.5) + gl_InstanceID / per;
-    int j = gl_InstanceID - (gl_InstanceID / per) * per;
+    int sparkN = int(uSparkN + 0.5);
+    int haloN = int(uHaloN + 0.5);
+    int id = gl_InstanceID;
+    if (id >= sparkN + haloN) {
+      water(id - sparkN - haloN);
+      return;
+    }
+    // (a spark: its rocket's line from uFirst, uPer a rocket; a halo: four a rocket from the first line)
+    float isSpark = id < sparkN ? 1.0 : 0.0;
+    int per = id < sparkN ? int(uPer + 0.5) : 4;
+    int k0 = id < sparkN ? id : id - sparkN;
+    int slot = (id < sparkN ? int(uFirst + 0.5) : 0) + k0 / per;
+    int j = k0 - (k0 / per) * per;
     vec4 d0 = rk(slot, 0);
     vec4 d1 = rk(slot, 1);
     vec4 d2 = rk(slot, 2);
@@ -130,7 +220,7 @@ export const SKY_VERTEX = /* glsl */ `
     vec3 col;
     float hide;
 
-    if (uMode < 0.5) {
+    if (isSpark > 0.5) {
       // ── A spark: its way out from the burst (an even shell, a ring in a tilted plane, a palm's arms, a comet's
       // tail, the signature's picture), its speed, then flight. Kinds by their tables' weights, never branches.
       float n = max(d4.y, 1.0);
@@ -203,9 +293,11 @@ export const SKY_VERTEX = /* glsl */ `
       // Colour: its own, turning to the second, then gold-to-ember as it dies; the tail of a trail warmer. The
       // signature: its towers the first colour, its lotus the second.
       col = mix(mix(d2.rgb, d3.rgb, smoothstep(0.25, 0.6, u)), mix(d3.rgb, d2.rgb, P0.w), ke.z);
+      // (white-hot as it leaves the burst, its colour coming as it cools; not the signature's gold, not crackles)
+      col = mix(col, vec3(1.0, 0.93, 0.8), 0.45 * exp(-tl / 0.2) * (1.0 - ke.z) * (1.0 - kc.y));
       col = mix(col, EMBER * 0.7, smoothstep(kb.z, 1.0, u));
       col = mix(col, EMBER, (1.0 - s) * 0.45 * (1.0 - held));
-      float bright = kb.y * pow(1.0 - u, KD[kind]) * (1.0 + 1.6 * exp(-tl / 0.12));
+      float bright = kb.y * pow(1.0 - smoothstep(KH[kind], 1.0, u), KD[kind]) * (1.0 + 1.0 * exp(-tl / 0.12));
       // (flicker; glitter strobes as it fades)
       float fl = 1.0 - kc.z + kc.z * hash(floor(uTime * 24.0), fj + seed * 13.0);
       float strobe = step(0.45, fract(uTime * 11.0 + h1 * 13.0)) * 1.9;
@@ -220,9 +312,12 @@ export const SKY_VERTEX = /* glsl */ `
       float tw = 0.5 + 0.5 * hash(floor(uTime * 30.0), fj + seed * 7.0);
       bright = mix(bright, (6.0 * exp(-since / 0.07) + 1.8 * tw) * (1.0 - smoothstep(0.35, 0.6, since)), popped);
       col = mix(col, POP, popped);
-      // (along a trail: the head brightest)
+      // (along a trail: the head brightest; a trail's tail fades out at the burst's heart, so the hundred trails
+      // meeting there in its first second make a bright heart, not a white blot)
       bright *= mix(kc.w, 1.0, pow(s, 1.6));
-      width = kb.x * (1.0 + 2.5 * pop * kc.y);
+      bright *= mix(1.0, smoothstep(0.04, 0.32, length(p - o) / max(size, 1.0)), (1.0 - s) * (1.0 - ke.z) * (1.0 - shed));
+      // (bigger shells have bigger stars; a comet's star is its own)
+      width = kb.x * mix(clamp(size / 40.0, 0.6, 1.45), 1.0, ke.y) * (1.0 + 2.5 * pop * kc.y);
       minPx = 1.9;
       col *= bright * uView.z;
       // (hidden: before it left, after its life (a crossette's pieces: soon after their pop), a crossette's pieces
@@ -244,9 +339,10 @@ export const SKY_VERTEX = /* glsl */ `
       // (the halos are still: the ribbon is a square round its point, its length nothing)
       float fl = 0.75 + 0.25 * hash(floor(uTime * 30.0), seed * 7.0);
       vec3 shell = mix(vec3(1.0, 0.78, 0.45), mix(d2.rgb, vec3(1.0), 0.3), kf.z) * 1.6 * kf.w * fl * mix(0.1, 1.0, pow(s, 2.0)) * (0.6 + 0.4 * smoothstep(0.0, 0.3, tl));
-      vec3 flash = mix(d2.rgb, vec3(1.0), 0.65) * 4.0 * exp(-max(tau, 0.0) / 0.06);
-      float lp = burstLight(d4.w, KL[kind], tau);
-      vec3 glow = d2.rgb * 0.13 * lp / max(d4.w, 1e-3);
+      vec3 flash = mix(d2.rgb, vec3(1.0), 0.65) * 2.6 * exp(-max(tau, 0.0) / 0.06);
+      // (the glow lasts as its sparks do: a soft halo of its colour behind them, white at its heart at first)
+      float gl = tau < 0.0 ? 0.0 : 0.55 * exp(-tau / 0.12) + 0.45 * exp(-tau / 1.3) + KL[kind] * 0.35 * exp(-tau / 2.6);
+      vec3 glow = mix(d2.rgb, vec3(1.0), 0.25 * exp(-max(tau, 0.0) / 0.25)) * 0.045 * gl;
       // smoke: its own faint grey under the moon, and the light of the bursts now near it
       vec3 lit = vec3(0.004, 0.005, 0.008) * uView.w;
       for (int i = 0; i < 2; i++) {
@@ -255,14 +351,20 @@ export const SKY_VERTEX = /* glsl */ `
       }
       vec3 smoke = lit * smoothstep(0.2, 1.4, tau) * (1.0 - smoothstep(5.0, 9.0, tau));
       col = oh.x * shell + oh.y * flash + oh.z * glow + oh.w * smoke;
-      width = dot(oh, vec4(kf.x, size * 0.3 * (1.0 + 4.0 * max(tau, 0.0)), size * 2.0, size * (0.75 + 0.08 * tau)));
+      width = dot(oh, vec4(kf.x, size * 0.3 * (1.0 + 2.0 * max(tau, 0.0)), size * 2.0, size * (0.75 + 0.08 * tau)));
       minPx = dot(oh, vec4(1.6, 3.0, 4.0, 4.0));
       vSoft = dot(oh, vec4(3.0, 3.5, 2.6, 2.2));
-      // (when each shows: the shell while it climbs; the flash 0.4 s; the glow 3.5 s; the smoke 9 s, not on low)
-      vec2 span = oh.x * vec2(-rise, 0.0) + oh.y * vec2(0.0, 0.4) + oh.z * vec2(0.0, 3.5) + oh.w * vec2(0.2, 9.0 * uSmoke);
+      vCore = dot(oh, vec4(0.8, 0.8, 0.0, 0.0));
+      // (when each shows: the shell while it climbs; the flash 0.4 s; the glow 4 s; the smoke 9 s, not on low)
+      vec2 span = oh.x * vec2(-rise, 0.0) + oh.y * vec2(0.0, 0.4) + oh.z * vec2(0.0, 4.0) + oh.w * vec2(0.2, 9.0 * uSmoke);
       hide = float(tau < span.x || tau > span.y);
     }
-    vSoft = uMode < 0.5 ? 2.4 : vSoft;
+    vSoft = isSpark > 0.5 ? 2.4 : vSoft;
+    vCore = isSpark > 0.5 ? 0.8 : vCore;
+    vSeg = vec4(0.0);
+    vB = vec4(0.0);
+    vHalf = vec3(0.0);
+    vXZ = vec2(0.0);
 
     // The ribbon on screen: across the path's direction, round caps at both ends; at least minPx wide.
     vec4 mvPosition = viewMatrix * vec4(p, 1.0);
@@ -288,114 +390,47 @@ export const SKY_VERTEX = /* glsl */ `
   }
 `;
 
-export const SKY_FRAGMENT = /* glsl */ `
-  #include <fog_pars_fragment>
-  varying vec3 vCol;
-  varying vec2 vQ;
-  varying float vSoft;
-  void main() {
-    float r2 = dot(vQ, vQ);
-    float a = (exp(-vSoft * r2) + 0.8 * exp(-vSoft * 5.0 * r2)) * (1.0 - smoothstep(0.75, 1.0, r2));
-    vec3 col = vCol * a;
-    #ifdef USE_FOG
-      // (into the haze with distance: fading, not tinted; bright lights carry far)
-      col *= 1.0 - 0.7 * hazeDistance(length(vFogWorld - cameraPosition));
-    #endif
-    if (max(col.r, max(col.g, col.b)) < 0.002) discard;
-    gl_FragColor = vec4(col, 1.0);
-  }
-`;
-
-/** The water's reflections: a quad per (rocket, stretch of water), the burst's light where the water mirrors it. */
-export const WATER_VERTEX = /* glsl */ `
-  #include <fog_pars_vertex>
-  ${COMMON}
-  uniform float uSpots;
-  // Each stretch of water: a segment (x0, z0, x1, z1) and (half width, water level, -, -).
-  uniform vec4 uSpotA[12];
-  uniform vec4 uSpotB[12];
-  uniform float uNight;
-  varying vec3 vCol;
-  varying vec2 vUv;
-  varying vec4 vSeg;
-  varying float vHalf;
-  varying vec2 vXZ;
-  varying float vSeed;
-
-  float segDist(vec2 p, vec4 sg) {
-    vec2 a = sg.xy;
-    vec2 ab = sg.zw - a;
-    float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
-    return length(p - a - ab * t);
-  }
-
-  void main() {
-    int ns = int(uSpots + 0.5);
-    int slot = gl_InstanceID / ns;
-    int k = gl_InstanceID - slot * ns;
-    vec4 d0 = rk(slot, 0);
-    vec4 d2 = rk(slot, 2);
-    vec4 d3 = rk(slot, 3);
-    vec4 d4 = rk(slot, 4);
-    vec4 sa = uSpotA[k];
-    vec4 sb = uSpotB[k];
-    float level = sb.y;
-    vec3 c = cameraPosition;
-    // Where the water mirrors the burst: the line from the eye to its mirror image crosses the water.
-    vec3 m = vec3(d0.x, 2.0 * level - d0.y, d0.z);
-    float t = (c.y - level) / max(c.y - m.y, 1e-3);
-    vec3 at = c + (m - c) * t;
-    float tau = uTime - d0.w;
-    // (the water mirrors the burst's sparks as long as they glow, not only its flash: a slower curve than its light)
-    float wl = KL[int(d2.w + 0.5)];
-    float lp = tau < 0.0 ? 0.0 : d4.w * (0.5 * exp(-tau / 0.09) + 0.45 * exp(-tau / 1.1) + wl * 0.4 * exp(-tau / 2.6));
-    vec2 toCam = c.xz - at.xz;
-    float dc = max(length(toCam), 1e-3);
-    vec2 dir = toCam / dc;
-    vec2 sideV = vec2(-dir.y, dir.x);
-    float r = d3.w * length(at - c) / max(length(m - c), 1e-3);
-    float sinA = (c.y - level) / max(length(at - c), 1e-3);
-    // (seen low over it, stretched towards the eye by the ripples: a long soft streak, as the lamps' on the water)
-    float len = clamp(r / max(sinA, 0.08) * 2.2, 3.0, 60.0);
-    float wid = r * 0.7 + 0.4;
-    vec2 xz = at.xz + dir * (position.y * len) + sideV * (position.x * 2.0 * wid);
-    vec4 mvPosition = viewMatrix * vec4(xz.x, level + 0.12, xz.y, 1.0);
-    gl_Position = projectionMatrix * mvPosition;
-    vCol = mix(d2.rgb, vec3(1.0), 0.2) * lp * 1.1 * (0.4 + 0.6 * uNight);
-    vUv = position.xy * 2.0;
-    vSeg = sa;
-    vHalf = sb.x;
-    vXZ = xz;
-    vSeed = d4.x;
-    #include <fog_vertex>
-    float far = segDist(at.xz, sa) - sb.x - len;
-    if (c.y < level + 0.2 || t <= 0.0 || far > 0.0 || lp < 0.003) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-  }
-`;
-
-export const WATER_FRAGMENT = /* glsl */ `
+export const FW_FRAGMENT = /* glsl */ `
   #include <fog_pars_fragment>
   uniform float uTime;
   varying vec3 vCol;
-  varying vec2 vUv;
+  varying vec2 vQ;
+  varying float vSoft;
+  varying float vCore;
   varying vec4 vSeg;
-  varying float vHalf;
+  varying vec4 vB;
+  varying vec3 vHalf;
   varying vec2 vXZ;
-  varying float vSeed;
   void main() {
-    vec2 a = vSeg.xy;
-    vec2 ab = vSeg.zw - a;
-    float t = clamp(dot(vXZ - a, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
-    float inside = 1.0 - smoothstep(vHalf - 1.5, vHalf, length(vXZ - a - ab * t));
-    float along = vUv.y;
-    float across = vUv.x;
-    // (glints across the streak, as the festival's lamps on the water: festival/_glow.ts)
-    float ripple = 0.55 + 0.45 * sin(along * 23.0 - uTime * 2.1 + vSeed * 40.0) * sin(along * 9.0 + uTime * 0.9);
-    float shape = exp(-across * across * 2.5) * (1.0 - along * along);
-    vec3 col = vCol * shape * ripple * inside;
-    #ifdef USE_FOG
-      col *= 1.0 - 0.8 * hazeDistance(length(vFogWorld - cameraPosition));
-    #endif
+    vec3 col;
+    if (vSoft < 0.0) {
+      // The water: inside its stretch; each point as bright as a ripple there would turn the burst to the eye
+      // (the half way between them from the water's up: slopes ≈ 0.35 rad on a breezy night), glints across the
+      // column (in the eye's angle down to it, so they are even on the screen), a soft wedge across.
+      vec2 a = vSeg.xy;
+      vec2 ab = vSeg.zw - a;
+      float t = clamp(dot(vXZ - a, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
+      float inside = 1.0 - smoothstep(vHalf.x - 1.5, vHalf.x, length(vXZ - a - ab * t));
+      vec3 P = vec3(vXZ.x, vB.w, vXZ.y);
+      vec3 h = normalize(normalize(vB.xyz - P) + normalize(cameraPosition - P));
+      float glit = exp(-(1.0 - h.y) / 0.12);
+      float phi = atan(vHalf.z, length(vXZ - cameraPosition.xz));
+      float across = vQ.x;
+      float bands = (0.5 + 0.5 * sin(phi * 900.0 - uTime * 2.6 + vHalf.y * 40.0)) * (0.55 + 0.45 * sin(phi * 330.0 + across * 3.0 + uTime * 1.1));
+      float shape = exp(-across * across * 2.2) * (1.0 - smoothstep(0.8, 1.0, vQ.y));
+      col = vCol * glit * shape * (0.2 + bands) * inside;
+      #ifdef USE_FOG
+        col *= 1.0 - 0.8 * hazeDistance(length(vFogWorld - cameraPosition));
+      #endif
+    } else {
+      float r2 = dot(vQ, vQ);
+      float a = (exp(-vSoft * r2) + vCore * exp(-vSoft * 5.0 * r2)) * (1.0 - smoothstep(0.75, 1.0, r2));
+      col = vCol * a;
+      #ifdef USE_FOG
+        // (into the haze with distance: fading, not tinted; bright lights carry far)
+        col *= 1.0 - 0.7 * hazeDistance(length(vFogWorld - cameraPosition));
+      #endif
+    }
     if (max(col.r, max(col.g, col.b)) < 0.002) discard;
     gl_FragColor = vec4(col, 1.0);
   }
