@@ -7,8 +7,8 @@ import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import type { StairNagaSpec } from '../sacred/naga';
 import { LAKE_GATE, LAKE_MANDALA, LAKE_PILLARS, LAKE_SALAS, LAKE_SHORE, LAKE_SIDE, LAKE_WALL, lakeFacingIn, lakePlazaAt, lakePlazaPolar } from './plan';
-import { LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE, RING_STONE } from './_sqKit';
-import { banner, fireBowl, GOLD, lampPost, stringLights, type Bodies, type LakeFrame } from './_lkKit';
+import { hangingBanner, LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE, RING_STONE } from './_sqKit';
+import { fireBowl, GOLD, lampPost, stringLights, type Bodies, type LakeFrame } from './_lkKit';
 import { buildLakeGate } from './_lkPlazaGate';
 import { dressPlazaGarden } from './_lkPlazaGarden';
 import { buildLakeSalas } from './_lkPlazaSala';
@@ -28,8 +28,9 @@ import { buildLakeSalas } from './_lkPlazaSala';
  *   panels and a gilt band, a lotus capital, a bronze fire bowl burning on top; the two big ones flank the landing), open
  *   to the landing, the land gate (`_lkPlazaGate.ts`), the side way in, and the two salas standing in its line.
  * - **Lamp posts** just outside the wall between the pillars, a tower lantern hanging from each, **string lights** from
- *   post to post round the rim (small bulbs, a modest halo now and then) and from the big pillars to the salas' eaves;
- *   red **banners** with the white Angkor Wat on the big pillars and the side ones.
+ *   post to post round the rim and from the big pillars to the salas' eaves (bulbs as small bright points at any
+ *   distance, `_sqGlow.ts` `clampBulbs`, no halos: no bloom wash); red **banners** with the white Angkor Wat on the big
+ *   pillars and the side ones (`_sqKit.ts` `hangingBanner`), live fire in the bowls (`kitFire`).
  * - The salas and the food stalls (`_lkPlazaSala.ts`), the garden round the wall: flower beds, the lily pond by the
  *   gate (`_lkPlazaGarden.ts`).
  *
@@ -269,7 +270,7 @@ export function buildPlaza(o: PlazaIn): Plaza {
       const bx = p.x + fx * (w / 2 + 0.09);
       const bz = p.z + fz * (w / 2 + 0.09);
       b.box(bx, top - 0.38, bz, bw + 0.12, 0.07, 0.07, pick(GOLD, i, 3, 8, 476), 'mapStone', { src, ry, shade: 1 });
-      banner(kit, bx, top - 0.42, bz, ry, bw, bh, low, 490 + i);
+      hangingBanner(kit, bx, top - 0.42, bz, ry, bw, bh, low, 490 + i);
     }
     if (p.big) front.push({ x: p.x, y: top + 0.1, z: p.z });
   }
@@ -309,7 +310,7 @@ export function buildPlaza(o: PlazaIn): Plaza {
     // (only neighbours along a run of wall: no string across a sala, the side way or the gate)
     const mid = norm(p.phi) + gap / 2;
     if (gap > 0.75 || blocked(mid)) continue;
-    stringLights(kit, bodies, glow, p.at, q.at, 0.55, every, 7);
+    stringLights(kit, bodies, glow, p.at, q.at, 0.55, every, 0);
   }
 
   // ── The gate and the avenue, the salas and stalls, the garden ──
@@ -327,10 +328,10 @@ export function buildPlaza(o: PlazaIn): Plaza {
     const after = mine.filter((t) => Math.abs(wrap(t.phi)) > Math.abs(s.phi)).sort((p, q) => Math.abs(wrap(p.phi)) - Math.abs(wrap(q.phi)))[0];
     const big = front.find((f) => Math.sign(lakePlazaPolar(f.x, f.z)[0]) === side);
     const lift = (p: { x: number; y: number; z: number }) => ({ ...p, y: p.y + 0.9 });
-    if (big && before) stringLights(kit, bodies, glow, lift(big), before.at, 0.5, every, 7);
-    if (before) stringLights(kit, bodies, glow, before.at, eave.near, 0.45, every, 7);
-    else if (big) stringLights(kit, bodies, glow, lift(big), eave.near, 0.6, every, 7);
-    if (after) stringLights(kit, bodies, glow, eave.far, after.at, 0.45, every, 7);
+    if (big && before) stringLights(kit, bodies, glow, lift(big), before.at, 0.5, every, 0);
+    if (before) stringLights(kit, bodies, glow, before.at, eave.near, 0.45, every, 0);
+    else if (big) stringLights(kit, bodies, glow, lift(big), eave.near, 0.6, every, 0);
+    if (after) stringLights(kit, bodies, glow, eave.far, after.at, 0.45, every, 0);
   }
   dressPlazaGarden({ field, b, kit, glow, low, src, paved });
 

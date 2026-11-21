@@ -90,8 +90,8 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   const m = shore.plaza.mandala;
   const ring = low ? null : buildNyeRing(m.x, m.y, m.z, m.r, false);
   if (ring) {
-    // (a dimmer gold than the Kulen square's: the reference's lotus is thin bright lines on dark stone, not a pool of light)
-    (ring.mesh.material as ShaderMaterial).uniforms.uColor.value.multiplyScalar(0.45);
+    // (a little dimmer than the Kulen square's: thin bright lines on dark stone, not a pool of light)
+    (ring.mesh.material as ShaderMaterial).uniforms.uColor.value.multiplyScalar(0.8);
     ring.mesh.name = 'nye:lake:mandala';
     object.add(ring.mesh);
   }
@@ -183,7 +183,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   object.add(stageAt, terraceAt);
   // (a warm white, not orange: the stone should read pale sandstone lit by fire, not an orange box)
   const stageLamp = addLamp({ kind: 'point', name: 'nye lake stage', color: 0xffc488, distance: 32, anchor: stageAt });
-  const terraceLamp = addLamp({ kind: 'point', name: 'nye lake terrace', color: 0xffb060, distance: 44, anchor: terraceAt });
+  const terraceLamp = addLamp({ kind: 'point', name: 'nye lake terrace', color: 0xffc488, distance: 44, anchor: terraceAt });
 
   const shadows = new ShadowGate(true).addAll(object);
   object.updateMatrixWorld(true);
@@ -249,7 +249,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
       beams.mesh.visible = event * lit > 0.001;
       const breathe = 1 + 0.06 * Math.sin(f.t * 2.3) + 0.04 * Math.sin(f.t * 3.7);
       stageLamp.intensity = 150 * lit * breathe * (1 + 0.45 * event + 0.5 * pulse);
-      terraceLamp.intensity = 120 * lit * (1 + 0.3 * event);
+      terraceLamp.intensity = 105 * lit * (1 + 0.3 * event);
       board.update(f);
       ring?.update(n, event, now);
       sacred.update(f);

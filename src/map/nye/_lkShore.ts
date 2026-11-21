@@ -21,7 +21,8 @@ import { buildPlaza, TOP, type Plaza } from './_lkPlaza';
  * - the ghat: sandstone steps down the bank's 2 m drop to a paved apron on the sand and on down into the water, strip by
  *   strip along the shore (they follow its slant), laterite cheeks at its ends, a Khmer lamp at the water at each side;
  * - the jetty down the ghat's middle to the stage: teak planks on dark posts sloping gently from the landing to the
- *   deck, red rails with gilt knobs, small flags of Cambodia on its posts, string lights along both rails;
+ *   deck, red rails with gilt knobs, small flags of Cambodia on its posts, string lights along both rails (no halos:
+ *   the bulbs are small bright points, `Bodies`);
  * - tall lacquered lantern poles at the ghat's top corners, the stage's string lights fanning to them and to the big
  *   fire pillars by the landing;
  * - pink and purple flowering trees framing the stage from the plaza (the Kulen square's crape myrtle and pink trumpet
@@ -205,7 +206,7 @@ export function buildLakeShore(field: HeightField, b: VoxelBuilder, kit: Kit, bl
       // String lights along the rail, sagging between the posts.
       const [ax, az] = fr.at(p.u, p.v);
       const [bx, bz] = fr.at(q.u, q.v);
-      stringLights(kit, bodies, glow, { x: ax, y: p.y + 1.02, z: az }, { x: bx, y: q.y + 1.02, z: bz }, 0.18, low ? 0.9 : 0.5, 4);
+      stringLights(kit, bodies, glow, { x: ax, y: p.y + 1.02, z: az }, { x: bx, y: q.y + 1.02, z: bz }, 0.18, low ? 0.9 : 0.5, 0);
     }
     // Small flags of Cambodia on slim poles at every other post.
     // (only on the shore end: from the terrace, looking down the jetty, the farther ones stand in front of the board)
@@ -251,8 +252,8 @@ export function buildLakeShore(field: HeightField, b: VoxelBuilder, kit: Kit, bl
     [liW, bigW ? [{ ...bigW, y: bigW.y + 0.9 }] : west],
     [liE, bigE ? [{ ...bigE, y: bigE.y + 0.9 }] : east],
   ] as const)
-    for (const p of list) if (a) stringLights(kit, bodies, glow, a, p, 2.2, every, low ? 3 : 5);
-  if (pr) for (const p of [west[0], east[0]]) if (p) stringLights(kit, bodies, glow, pr, p, 3.2, every, low ? 3 : 5);
+    for (const p of list) if (a) stringLights(kit, bodies, glow, a, p, 2.2, every, 0);
+  if (pr) for (const p of [west[0], east[0]]) if (p) stringLights(kit, bodies, glow, pr, p, 3.2, every, 0);
 
   // ── Flowering trees framing the stage from the plaza: either side by the bank, and behind the salas (not on low) ──
   const TREES: { phi: number; d: number; t: Omit<NyeTree, 'x' | 'z'> }[] = [

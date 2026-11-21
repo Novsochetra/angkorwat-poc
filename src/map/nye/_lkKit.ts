@@ -8,7 +8,8 @@ import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import { onTemple } from '../roam/_flag';
 import { LAKE_STAGE } from './plan';
-import { GOLD, pick, type Tones } from './_sqKit';
+import { clampBulbs } from './_sqGlow';
+import { GOLD, kitFire, pick, type Tones } from './_sqKit';
 
 /**
  * The lake venue's shared bits (AWP-35, `lake.ts`): the stage's frame on the water, the woods and lacquer, the glowing
@@ -86,6 +87,10 @@ export const smooth = (a: number, b: number, x: number): number => {
 export class Bodies {
   private readonly items: { p: [number, number, number]; s: [number, number, number]; c: number; k: number; ry: number }[] = [];
   readonly material = new MeshBasicMaterial({ color: 0xffffff });
+  constructor() {
+    // (the bulbs — anything under 0.2 m — stay small bright points at any distance: the Kulen square's rule, `_sqGlow.ts`)
+    clampBulbs(this.material);
+  }
   get count(): number {
     return this.items.length;
   }
@@ -164,7 +169,7 @@ export function wire(kit: Kit, p: V3, q: V3, sag: number, thick = 0.025): void {
   }
 }
 
-/** A string of bulbs from p to q sagging `sag` m: the wire, a bulb every `every` m, a small halo on every `haloEvery`th. */
+/** A string of bulbs from p to q sagging `sag` m: the wire, a bulb every `every` m, a small halo on every `haloEvery`th (0: none). */
 export function stringLights(kit: Kit, bodies: Bodies, glow: Glow | null, p: V3, q: V3, sag: number, every: number, haloEvery = 3): void {
   wire(kit, p, q, sag);
   const len = Math.hypot(q.x - p.x, q.z - p.z);
@@ -176,7 +181,7 @@ export function stringLights(kit: Kit, bodies: Bodies, glow: Glow | null, p: V3,
     const y = p.y + (q.y - p.y) * t - sag * 4 * t * (1 - t) - 0.08;
     const c = BULB[Math.floor(hash3(x, z, i, 95) * BULB.length) % BULB.length];
     bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.85 + 0.3 * hash3(x, z, i, 96));
-    if (glow && i % haloEvery === 0) glow.add(x, y, z, c, 0.7, { level: 0.22 });
+    if (glow && haloEvery > 0 && i % haloEvery === 0) glow.add(x, y, z, c, 0.7, { level: 0.22 });
   }
 }
 
@@ -222,41 +227,20 @@ export function lanternPole(b: VoxelBuilder, kit: Kit, bodies: Bodies, glow: Glo
 
 // ── Fire: in bowls on pillars, braziers ──────────────────────────────────────
 
-/** Flame tones: gold at the heart to deep orange at the tips (the tongues), the embers, the bed of coals. */
-const FLAME = [0xffb444, 0xff9a2a, 0xffc860, 0xff8420, 0xffa838] as const;
 const EMBER = 0xff9a3a;
-const COALS = 0xd8501a;
 /** Bronze: the bowls. */
 export const BRONZE: Tones = [0x5c4430, 0x664c36, 0x6e5238, 0x54402e];
 
 /**
- * A fire burning in a bowl whose rim is at (x, y, z), `s` its size (1: a bowl ≈ 1 m across): a bed of glowing coals and
- * a small bright heart (the glowing boxes: a dim ember by day), tongues of flame licking up — thin kit boxes stood on end
- * and waving as the banners' cloth does, each at its own pace and phase, so the fire flickers (night only; orange, not
- * white: their glow is kept low) — embers rising and fading (the kit's `ANIM.arc`; not on low), and a halo (the glow's
- * slow flicker). Every motion is in the kit's shaders: nothing to update.
+ * A fire burning in a bowl whose rim is at (x, y, z), `s` its size (1: a bowl ≈ 1 m across): the Kulen square's live
+ * fire (`_sqKit.ts` `kitFire`: tongues that leap, narrow and sway in the kit's shader, orange and gold, never white),
+ * embers rising and fading (the kit's `ANIM.arc`; not on low), a small halo (the glow's slow flicker). Every motion is
+ * in the kit's shaders: nothing to update. (`bodies`: kept for the callers; the fire has no glowing box of its own.)
  */
-export function fire(kit: Kit, bodies: Bodies, glow: Glow | null, x: number, y: number, z: number, s: number, seed: number, low: boolean): void {
+export function fire(kit: Kit, bodies: Bodies | null, glow: Glow | null, x: number, y: number, z: number, s: number, seed: number, low: boolean): void {
+  void bodies;
   const r = (i: number, k: number) => hash3(seed, i, k, 97);
-  bodies.add(x, y + 0.04 * s, z, 0.7 * s, 0.08 * s, 0.7 * s, COALS, 0.75, r(0, 0) * 3);
-  bodies.add(x, y + 0.17 * s, z, 0.28 * s, 0.26 * s, 0.28 * s, 0xffb050, 0.85, r(0, 1) * 3);
-  const n = low ? 4 : 8;
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + r(i, 1) * 0.9;
-    const rr = i === 0 ? 0 : (0.1 + 0.15 * r(i, 2)) * s;
-    const h = (i === 0 ? 0.95 : 0.4 + 0.38 * r(i, 3)) * s * (rr > 0.18 * s ? 0.75 : 1);
-    const w = (i === 0 ? 0.2 : 0.11 + 0.08 * r(i, 4)) * s;
-    kit.box(x + Math.cos(a) * rr, y + 0.06 * s + h / 2, z + Math.sin(a) * rr, h, w, w * 0.8, FLAME[(i + Math.floor(r(i, 5) * 5)) % FLAME.length], {
-      roll: Math.PI / 2,
-      yaw: a,
-      anim: ANIM.wave,
-      a: [0.2 + 0.14 * r(i, 6), 0, perPeriod(13 + 12 * r(i, 7))],
-      b: [r(i, 8) * 6.28, 0, 0, 0],
-      // (no bloom on low: a lower glow keeps them orange, not white)
-      glow: low ? 0.45 : 0.8,
-      show: SHOW.night,
-    });
-  }
+  kitFire(kit, x, y, z, 1.35 * s, seed);
   if (!low)
     for (let i = 0; i < 3; i++) {
       const period = [2, 2.4, 3][i];
@@ -268,7 +252,7 @@ export function fire(kit: Kit, bodies: Bodies, glow: Glow | null, x: number, y: 
         show: SHOW.night,
       });
     }
-  glow?.add(x, y + 0.45 * s, z, 0xffa040, 3 * s, { level: 0.75 });
+  glow?.add(x, y + 0.45 * s, z, 0xffa040, 2.6 * s, { level: 0.65 });
 }
 
 /**

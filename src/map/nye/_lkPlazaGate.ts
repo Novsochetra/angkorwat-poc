@@ -9,8 +9,8 @@ import { BAYON_STONE, bondTone, carveFace, courseShade, FACE_TINY, fillBox, tone
 import { Frame, type Lamps } from '../landmarks/_prasatKit';
 import type { StairNagaSpec } from '../sacred/naga';
 import { LAKE_AVENUE, LAKE_GATE, LAKE_WALL, lakeFacingIn, lakePlazaAt } from './plan';
-import { khmerLamp, LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE } from './_sqKit';
-import { banner, fireBowl, GOLD, LACQUER, towerLantern, type Bodies } from './_lkKit';
+import { hangingBanner, khmerLamp, LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE } from './_sqKit';
+import { fireBowl, GOLD, LACQUER, towerLantern, type Bodies } from './_lkKit';
 
 /**
  * The lake plaza's land gate and its avenue (AWP-35, the owner's lake reference; where: plan.ts `LAKE_GATE`,
@@ -164,7 +164,7 @@ export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, b
     // (the bar out over the avenue's side, the banner hanging from it)
     const [cx, cz] = at(s * (kerb + 0.6), footZ + 1.6);
     out.box(cx, barY, cz, 1.4, 0.08, 0.08, pick(LACQUER, s, 6, 14, 432), 'mapStone', { src, ry: yawOut });
-    banner(kit, cx, barY - 0.05, cz, yawOut, 1.0, 3.0, low, 440 + s);
+    hangingBanner(kit, cx, barY - 0.05, cz, yawOut, 1.0, 3.0, low, 440 + s, 0.05);
     field.occupy(bx - 0.5, bz - 0.5, bx + 0.5, bz + 0.5);
   }
   // Khmer lamps in pairs along the avenue past the naga.
