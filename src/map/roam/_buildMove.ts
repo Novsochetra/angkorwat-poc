@@ -99,6 +99,8 @@ let touch: { id: number; x: number; y: number; t: number } | null = null;
 /** The aim (once a step): the piece, why not, the prompt. */
 const aim = { step: -1, piece: null as Built | null, foot: null as FootRec | null, why: null as MoveWhy, prompt: null as string | null };
 let lastCtx: RoamCtx | null = null;
+/** The thing the mouse is over, out of move mode (press and drag: roam/_build.ts), drawn gold as an aimed one. */
+let hover: Grabbed | null = null;
 /** What a tap or a click on a piece does (roam/_build.ts: picks it up). */
 let onPick: ((ctx: RoamCtx, b: Built | null, foot: FootRec | null) => void) | null = null;
 
@@ -260,20 +262,8 @@ function faced(ctx: RoamCtx): Built | FootRec | null {
   return best;
 }
 
-/** What he aims at now (once a step, or again after a tap). */
-function aimNow(ctx: RoamCtx): void {
-  if (aim.step === stepN || !env) return;
-  aim.step = stepN;
-  const i = ctx.input;
-  const p = i.pointer;
-  // (the mouse over the view aims, unless a game pad is in use; a tap holds until he walks or the camera turns)
-  if (p && !pad.active && !onTouch()) src = 'mouse';
-  else if (src === 'mouse') src = 'cross';
-  if (src === 'tap' && (Math.hypot(i.move.x, i.move.y) > 0.2 || i.lookYaw || i.lookPitch)) src = 'cross';
-  const r = env.canvas.getBoundingClientRect();
-  if (src === 'mouse' && p) _ndc.set(((p.x - r.left) / r.width) * 2 - 1, -((p.y - r.top) / r.height) * 2 + 1);
-  else if (src === 'tap') _ndc.set(((tapAt.x - r.left) / r.width) * 2 - 1, -((tapAt.y - r.top) / r.height) * 2 + 1);
-  else _ndc.set(0, CROSS_Y);
+/** The piece or footprint building the ray from the camera through `_ndc` meets first, or null. */
+function rayHit(ctx: RoamCtx): Built | FootRec | null {
   _ray.setFromCamera(_ndc, ctx.cam.camera);
   const { origin: o, direction: d } = _ray.ray;
   let hit: Built | FootRec | null = null;
@@ -293,6 +283,42 @@ function aimNow(ctx: RoamCtx): void {
     bt = tt;
     hit = r;
   }
+  return hit;
+}
+
+/** What a press and drag would pick up: the thing of his under the screen point (px), and why not (null: it can be). */
+export interface Grabbed {
+  readonly piece: Built | null;
+  readonly foot: FootRec | null;
+  readonly why: MoveWhy;
+  readonly name: string;
+}
+/** The thing of his under the screen point (px) (press and drag, roam/_build.ts), or null. No reach: he moves it from where he stands. */
+export function grabAt(ctx: RoamCtx, px: number, py: number): Grabbed | null {
+  if (!env) return null;
+  const r = env.canvas.getBoundingClientRect();
+  _ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
+  const hit = rayHit(ctx);
+  if (!hit) return null;
+  if (isFoot(hit)) return { piece: null, foot: hit, why: whyNotFoot(hit), name: footWord(hit.kind) };
+  return { piece: hit, foot: null, why: whyNot(hit), name: nameOf(hit) };
+}
+
+/** What he aims at now (once a step, or again after a tap). */
+function aimNow(ctx: RoamCtx): void {
+  if (aim.step === stepN || !env) return;
+  aim.step = stepN;
+  const i = ctx.input;
+  const p = i.pointer;
+  // (the mouse over the view aims, unless a game pad is in use; a tap holds until he walks or the camera turns)
+  if (p && !pad.active && !onTouch()) src = 'mouse';
+  else if (src === 'mouse') src = 'cross';
+  if (src === 'tap' && (Math.hypot(i.move.x, i.move.y) > 0.2 || i.lookYaw || i.lookPitch)) src = 'cross';
+  const r = env.canvas.getBoundingClientRect();
+  if (src === 'mouse' && p) _ndc.set(((p.x - r.left) / r.width) * 2 - 1, -((p.y - r.top) / r.height) * 2 + 1);
+  else if (src === 'tap') _ndc.set(((tapAt.x - r.left) / r.width) * 2 - 1, -((tapAt.y - r.top) / r.height) * 2 + 1);
+  else _ndc.set(0, CROSS_Y);
+  let hit = rayHit(ctx);
   // (nothing under the mouse or at the ring: the piece he faces close by; a tap aims only where it was)
   if (!hit && src !== 'tap') hit = faced(ctx);
   const foot = hit && isFoot(hit) ? hit : null;
@@ -466,24 +492,30 @@ export const MoveMode = {
   },
   /** Each step after the rest (`free`: nothing else has him): the highlight and the ring. */
   show(free: boolean): void {
-    const b = on && free ? aim.piece : null;
+    const hv = !on && free ? hover : null;
+    const why = hv ? hv.why : aim.why;
+    const b = on && free ? aim.piece : (hv?.piece ?? null);
     if (b && ghost) {
       ghost.setPiece(b.id, b.len, b.seed);
-      ghost.show(b.x, b.z, b.yaw, !aim.why, b.y);
+      ghost.show(b.x, b.z, b.yaw, !why, b.y);
     } else ghost?.show(null);
-    const f = on && free ? aim.foot : null;
+    const f = on && free ? aim.foot : (hv?.foot ?? null);
     if (f && footGhost) {
       const key = `${f.uid}|${f.rect.i0},${f.rect.k0},${f.rect.i1},${f.rect.k1}|${f.door}|${BUILT.version}`;
       if (footShown.rec !== f || footShown.key !== key) {
         footShown = { rec: f, key };
         footGhost.set(FOOTS.plan(f), f.rect, null, null);
       }
-      footGhost.show(true, !aim.why);
+      footGhost.show(true, !why);
     } else footGhost?.show(false);
     showCross(on && free && src === 'cross' && !onTouch());
   },
   frame(dt: number): void {
     ghost?.frame(dt);
     footGhost?.frame(dt);
+  },
+  /** The thing under the mouse out of move mode (press and drag), or null: drawn gold (red with a reason) by `show`. */
+  hover(h: Grabbed | null): void {
+    hover = h;
   },
 };

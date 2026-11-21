@@ -306,7 +306,8 @@ export function canBuild(world: RoamWorld, id: PieceId | 'foot', x: number, z: n
   if (r) return r;
   _h0 = world.field.heightAt(x, z);
   _lo = _hi = _h0;
-  r = eachPoint(f, 0, onLevel);
+  // (a fence run: the ground along its middle, where its posts stand; his land's edge often runs along a step of it)
+  r = eachPoint(f, fence ? -sizeOf(f).d / 2 : 0, onLevel);
   if (r) return r;
   // The trees on his land: a trunk (and the room round it), a crown over a piece taller than its lowest leaves.
   for (const t of PLOT_TREES) if (distTo(f, t.x, t.z) < t.trunk || (p.h > t.low && distTo(f, t.cx, t.cz) < t.cr)) return 'tree';

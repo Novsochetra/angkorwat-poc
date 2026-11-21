@@ -3040,11 +3040,13 @@ sounds `audio/_build.ts`.
   where that line, out to 6 m past its end, crosses it at 30° or more (`meetLine`: the corner
   they make; the next run closes it square). **On his land's edge** (November 2026): a run
   within 0.55 m of a side of his land (the cord he sees while he builds) and within 15° of along
-  it, not snapped to a fence end, lies on the side's line, turned exactly along it, kept within the
-  side's length (`snapEdge`, `state().placing.edge`); the placing rules let a fence's middle line lie
-  on the edge (its half depth past it, `FENCE_EDGE` in `_buildSpots.ts`) and let it stand by a path
-  (no margin; the trail's tread is still never under it) or 0.15 m from the water, so a fence can
-  close his land beside the Kulen trail. The materials are a whole run's. The turn
+  it, not snapped to a fence end, lies just inside the side, its outer face on the cord (no gap
+  left; on the upper side where the edge follows a step of the land), turned exactly along it,
+  kept within the side's length (`snapEdge`, `state().placing.edge`); the placing rules let a
+  fence's middle line lie on the edge (its half depth past it, `FENCE_EDGE` in `_buildSpots.ts`),
+  let it stand by a path (no margin; the trail's tread is still never under it) or 0.15 m from the
+  water, and ask only the ground along its middle to be level (where its posts stand), so a fence
+  can close his land beside the Kulen trail and along the land's steps. The materials are a whole run's. The turn
   shows: "E  Build here 45°" (the phone's Use button reads "សង់នៅទីនេះ ៤៥°") and in the
   touch bar between ⟲ ⟳ and the other buttons. "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
   the row, before a hammock, the dog, the house's doors) pays riel for what he lacks
@@ -3079,6 +3081,17 @@ sounds `audio/_build.ts`.
   ("Put it back") leaves it where it was. Either way move mode goes on for the next; Esc there (✕,
   ○) ends it, as walking 8 m off his land, another mode or another row of the card. The touch bar
   shows only its card and ✕ buttons until he carries one.
+  **Press and drag** (the quick way, November 2026; `dragGrab.ts`, `_build.ts` `dragGrab`): on foot
+  by his land, the mouse over a thing he built draws it gold with "Hold and drag to move it" by the
+  pointer (or why not, in red; the cursor a hand), every piece and footprint building, from wherever
+  he stands (`grabAt`: no reach). A press held still 0.22 s (a finger 0.35 s) grabs it; moved more
+  than 6 px (10 px) first, the press is a camera drag as ever, and a drag on the grass always is.
+  While held, the ghost follows the ground under the pointer, offset as where he grabbed it, turned
+  as it stood and by `,` / `.` (the touch ⟲ ⟳), snapping to fence ends and the land's edge as any;
+  the camera holds still. **Let go**: put down there if it may stand ("Let go to put it here"), else
+  put back with the reason as a toast; Esc (✕) puts it back. No mode is left on after. Pads keep the
+  card's "Move your things" and E. A second finger before the hold is a pinch; the camera or phone
+  up, paint mode, build or footprint mode, the card: no grab.
   **Footprint buildings move too** (a stilt house, a shed, a fence line: November 2026): aimed at
   as a piece is (each part's box from its lowest block to its top; a piece in it or before it wins),
   drawn over in gold (`FootGhost` 'pick'), refused while half built, with furniture on its floor or

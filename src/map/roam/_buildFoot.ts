@@ -214,7 +214,7 @@ export function footJob(rec: FootRec, heightAt: (x: number, z: number) => number
 const _ray = new Raycaster();
 const _ndc = new Vector2();
 /** The land's point under a screen point (px), or null. */
-function landHit(camera: PerspectiveCamera, px: number, py: number): [number, number] | null {
+export function landHit(camera: PerspectiveCamera, px: number, py: number): [number, number] | null {
   if (!env) return null;
   const r = env.canvas.getBoundingClientRect();
   _ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
@@ -269,6 +269,12 @@ function wireTap(): void {
 
 /** The cursor's cell now (into `cursor`). */
 function aim(ctx: RoamCtx): void {
+  // (dragged: where the drag holds it, roam/_build.ts; not the mouse's own cell)
+  if (FootMode.dragging && held) {
+    cursor[0] = held[0];
+    cursor[1] = held[1];
+    return;
+  }
   const i = ctx.input;
   if (Math.hypot(i.move.x, i.move.y) > 0.2) {
     src = 'ahead';
@@ -374,6 +380,7 @@ export const FootMode = {
     wireTap();
   },
   exit(): void {
+    this.dragging = false;
     if (!kind) return;
     if (carried) FOOTS.skip(null);
     carried = null;
@@ -430,6 +437,13 @@ export const FootMode = {
     doorTurned = true;
     src = 'ahead';
     held = null;
+  },
+  /** Carried by a press and drag (roam/_build.ts): the prompt says "Let go to put it here". */
+  dragging: false,
+  /** Worked out again now (before a put down: the pointer may have moved since the step). */
+  refresh(ctx: RoamCtx): void {
+    now.step = -1;
+    this.step(ctx);
   },
   /** The building he carries (null: none). */
   get carrying(): FootRec | null {
@@ -643,6 +657,7 @@ function promptNow(): string | null {
     const size = now.rect ? sizeWords(now.rect) : '';
     const tail = `${size}  ·  ,.  ${t('buildTurn')}  ·  Esc  ${t('movePutBack')}`;
     if (r) return touch ? reasonWords(r) : `${reasonWords(r)}  ·  ${tail}`;
+    if (FootMode.dragging) return touch ? t('dragHere') : `${t('dragHere')}  ·  ${tail}`;
     return touch ? `E  ${t('buildMoveHere')} ${size}` : `E  ${t('buildMoveHere')}  ·  ${tail}`;
   }
   if (!anchor) {
