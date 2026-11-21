@@ -2379,6 +2379,10 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
       out of the reference, overview and crowd views' sight lines (`hidesView`). Shots: the riverside
       `cam=428,13,-232,438,7,-249,55`, the front path `cam=360,16,-214,374,7,-233,55`, the walk over the bridge
       `roam=walk&at=425,-248&yaw=90&sim=w:3.2`.
+    Its cost (counted 2026-11-21 on a CPU, exact draws and triangles, before → after, at 23:30 with the crowd): a
+    phone on low walking on the square 847 → 853 draws, + 1.4 % triangles; the reference view on low 860 → 866,
+    + 1.0 %; walking on high 604 → 610, + 6.1 % (the flowers and paths: the square's petal family 78 k → 204 k). The
+    six new draws: the light, the mist, the sparks, the petals, the fliers, the strings.
     Views to judge it by: the reference `cam=345,42,-200,392,6,-275,48`, the crowd's `VIEW`, among the people
     `cam=362,11.5,-245,395,9,-272,60`, from over it `cam=383,85,-232,383,8,-265,60` (all `nye=+30m&graphics=high`),
     and the reference with `graphics=low&phone=1`.
