@@ -10,8 +10,11 @@ import { BOARD, GROUND } from './plan';
 /**
  * The countdown board (AWP-35): a screen `BOARD.w` × `BOARD.h` m in the stage gate, facing south, drawn on a
  * canvas (1024 × 512) that is redrawn only when what it shows changes (once a second at most, and only while
- * the camera is near enough to read it or it has never been drawn). An unlit material whose colour goes over
- * 1.0 at night (bloom), plain 1.0 by day (a lit screen reads in the sun).
+ * the camera is near enough to read it or it has never been drawn). As the owner's sheet ("MAIN COUNTDOWN
+ * SCREEN"): a near black-brown screen in an ornate gold frame, crisp gold numerals with a soft glow (drawn into
+ * the picture: a faint wide glow under, the sharp figure over it), a small label under each, the name on top and a
+ * gold "LIVE EVENT" pill. An unlit material, a little over 1.0 at night: only the brightest gold blooms, the dark
+ * screen stays dark (it must read from the crowd and from over the gate, never as a white-hot panel).
  *
  * What it shows comes from clock.ts `boardAt()` (`nyeboard=` holds a state):
  * - `days`: the name, "ព្រឹត្តិការណ៍ផ្ទាល់ / LIVE EVENT", days : hours : minutes : seconds and their labels;
@@ -63,7 +66,12 @@ const LAT_TEXT = (px: number) => `800 ${px}px 'Nunito Sans', system-ui, sans-ser
 
 const GOLD = '#ffd27a';
 const GOLD_DEEP = '#e2a23a';
-const GLOW = 'rgba(255, 178, 64, 0.85)';
+/** The figures' soft glow (drawn wide and faint under the sharp figure). */
+const GLOW = 'rgba(255, 150, 40, 0.75)';
+/** Labels and small words: a paler, quieter gold. */
+const PALE = '#e9cf98';
+/** The pill's words: dark on gold. */
+const INK = '#2a1608';
 
 // ── Phase 2's hooks ──────────────────────────────────────────────────────────
 
@@ -115,16 +123,16 @@ function paintFrame(): HTMLCanvasElement | OffscreenCanvas {
     PPM,
     (pen: KbachPen) => {
       const gr = pen.ground;
+      // (near black-brown, a little warmer in the middle: a dark screen the gold reads on)
       const grad = gr.createLinearGradient(0, H, 0, 0);
-      grad.addColorStop(0, '#1b120d');
-      grad.addColorStop(0.5, '#120c09');
-      grad.addColorStop(1, '#1d130d');
+      grad.addColorStop(0, '#120b07');
+      grad.addColorStop(0.5, '#0c0705');
+      grad.addColorStop(1, '#130c08');
       gr.fillStyle = grad;
       gr.fillRect(0, 0, W, H);
-      // (the screen's faint warm sheen in the middle)
-      const rg = gr.createRadialGradient(W / 2, H * 0.48, 0.2, W / 2, H * 0.48, W * 0.5);
-      rg.addColorStop(0, 'rgba(90, 44, 18, 0.55)');
-      rg.addColorStop(1, 'rgba(90, 44, 18, 0)');
+      const rg = gr.createRadialGradient(W / 2, H * 0.5, 0.2, W / 2, H * 0.5, W * 0.48);
+      rg.addColorStop(0, 'rgba(70, 34, 12, 0.5)');
+      rg.addColorStop(1, 'rgba(70, 34, 12, 0)');
       gr.fillStyle = rg;
       gr.fillRect(0, 0, W, H);
       const rect = (i: number): P[] => [
@@ -134,9 +142,9 @@ function paintFrame(): HTMLCanvasElement | OffscreenCanvas {
         [i, H - i],
         [i, i],
       ];
-      // Two gold rules round the edge, the outer broad.
-      ribbon(pen.gold, rect(0.09), 0.11, 0.11, false);
-      ribbon(pen.gold, rect(0.27), 0.035, 0.035, false);
+      // Gold rules round the edge: the outer broad (it reads from across the square), a fine one inside it.
+      ribbon(pen.gold, rect(0.1), 0.17, 0.17, false);
+      ribbon(pen.gold, rect(0.3), 0.04, 0.04, false);
       // Kbach scrolls in the corners, curling in from the rules.
       const r = 0.36;
       const corners: [number, number, 1 | -1, 1 | -1][] = [
@@ -270,16 +278,25 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
 
   const word = (k: Word, km: boolean) => WORDS[k][km ? 'km' : 'en'];
 
-  /** Text centred at (x, y) in px, shrunk to `max` px wide, with the screen's glow. */
+  /**
+   * Text centred at (x, y) in px, shrunk to `max` px wide: first its soft glow (`blur` px, faint, wide), then the
+   * figure itself sharp over it, so it stays crisp from afar and still glows.
+   */
   const text = (s: string, x: number, y: number, font: string, max: number, fill: string | CanvasGradient = GOLD, blur = 18) => {
     g.font = font;
     const w = g.measureText(s).width;
     if (w > max) g.font = font.replace(/(\d+(?:\.\d+)?)px/, (_, n) => `${Math.floor((Number(n) * max) / w)}px`);
-    g.shadowColor = GLOW;
-    g.shadowBlur = blur;
     g.fillStyle = fill;
-    g.fillText(s, x, y);
+    if (blur > 0) {
+      g.save();
+      g.shadowColor = GLOW;
+      g.shadowBlur = blur;
+      g.globalAlpha = 0.5;
+      g.fillText(s, x, y);
+      g.restore();
+    }
     g.shadowBlur = 0;
+    g.fillText(s, x, y);
   };
   const goldFill = (y0: number, y1: number) => {
     const gr = g.createLinearGradient(0, y0, 0, y1);
@@ -299,8 +316,8 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
     const w = c.width * scale;
     const h = c.height * scale;
     g.imageSmoothingEnabled = false;
-    g.shadowColor = 'rgba(255, 170, 60, 0.7)';
-    g.shadowBlur = 14;
+    g.shadowColor = 'rgba(255, 150, 40, 0.55)';
+    g.shadowBlur = 10;
     g.drawImage(c, CW / 2 - w / 2, cy - h / 2, w, h);
     if (latin) {
       const lw = latin.width * 2;
@@ -311,61 +328,77 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
     g.imageSmoothingEnabled = true;
   };
 
-  /** A gold pill with words in it (the LIVE EVENT badge). */
+  /** A gold pill with dark words in it (the LIVE EVENT badge, as on the owner's sheet), a red "on air" dot. */
   const pill = (s: string, cy: number, km: boolean) => {
-    g.font = km ? KH_TEXT(25) : LAT_TEXT(23);
-    const w = Math.min(420, g.measureText(s).width + 64);
-    const h = 40;
+    const font = km ? KH_TEXT(24) : LAT_TEXT(22);
+    g.font = font;
+    const w = Math.min(440, g.measureText(s).width + 70);
+    const h = 38;
     const x = CW / 2 - w / 2;
+    const fill = g.createLinearGradient(0, cy - h / 2, 0, cy + h / 2);
+    fill.addColorStop(0, '#ffe7a8');
+    fill.addColorStop(0.5, '#f2bd55');
+    fill.addColorStop(1, '#c9862a');
+    g.save();
     g.shadowColor = GLOW;
-    g.shadowBlur = 16;
-    g.fillStyle = 'rgba(255, 196, 92, 0.16)';
-    g.strokeStyle = GOLD;
-    g.lineWidth = 3;
+    g.shadowBlur = 14;
+    g.fillStyle = fill;
     g.beginPath();
     g.roundRect(x, cy - h / 2, w, h, h / 2);
     g.fill();
-    g.stroke();
-    g.shadowBlur = 0;
-    // (a red "on air" dot)
-    g.fillStyle = '#ff4a36';
-    g.shadowColor = 'rgba(255, 60, 40, 0.9)';
-    g.shadowBlur = 10;
+    g.restore();
+    g.strokeStyle = '#fff0c4';
+    g.lineWidth = 1.5;
     g.beginPath();
-    g.arc(x + 22, cy, 6.5, 0, Math.PI * 2);
+    g.roundRect(x + 2, cy - h / 2 + 2, w - 4, h - 4, h / 2 - 2);
+    g.stroke();
+    g.fillStyle = '#d8231a';
+    g.beginPath();
+    g.arc(x + 22, cy, 7, 0, Math.PI * 2);
     g.fill();
-    g.shadowBlur = 0;
-    text(s, CW / 2 + 10, cy + (km ? 2 : 1), km ? KH_TEXT(25) : LAT_TEXT(23), w - 56, GOLD, 8);
+    g.fillStyle = '#ff8a70';
+    g.beginPath();
+    g.arc(x + 20.5, cy - 1.5, 2.5, 0, Math.PI * 2);
+    g.fill();
+    text(s, CW / 2 + 12, cy + (km ? 2 : 1), font, w - 60, INK, 0);
   };
 
-  /** Groups of two digits with colons, and their labels under them. */
+  /** Groups of two digits with colons, and a small label under each (the sheet's "DAYS HOURS MINUTES SECONDS"). */
   const clockRow = (groups: { v: number; label: string }[], km: boolean, cy: number, size: number) => {
     const n = groups.length;
-    // (inside the corner scrolls: about 800 px in all)
-    const slot = Math.min(232, 800 / (n + (n - 1) * 0.3));
-    const colon = slot * 0.3;
+    // (inside the corner scrolls: about 860 px in all)
+    const slot = Math.min(236, 860 / (n + (n - 1) * 0.26));
+    const colon = slot * 0.26;
     const total = n * slot + (n - 1) * colon;
     let x = CW / 2 - total / 2;
     const font = km ? KH_DISPLAY(size) : LAT_DIGITS(size);
-    const fill = goldFill(cy - size * 0.5, cy + size * 0.45);
+    const fill = goldFill(cy - size * 0.48, cy + size * 0.42);
+    const top = cy - size * 0.6;
+    const ph = size * 1.08;
     groups.forEach((gp, i) => {
-      // (a dark sunk panel behind each pair: the screen's segments)
-      g.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      // (a dark sunk panel behind each pair, a faint gold line round it: the screen's segments)
+      g.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      g.strokeStyle = 'rgba(255, 196, 110, 0.22)';
+      g.lineWidth = 2;
       g.beginPath();
-      g.roundRect(x + 6, cy - size * 0.62, slot - 12, size * 1.12, 14);
+      g.roundRect(x + 5, top, slot - 10, ph, 12);
       g.fill();
-      text(digits(two(gp.v), km), x + slot / 2, cy + (km ? size * 0.06 : 0), font, slot - 18, fill, 26);
-      text(gp.label, x + slot / 2, cy + size * 0.84, km ? KH_TEXT(34) : LAT_TEXT(28), slot - 4, '#f3d9a0', 8);
+      g.stroke();
+      text(digits(two(gp.v), km), x + slot / 2, cy + (km ? size * 0.06 : 0), font, slot - 20, fill, 22);
+      text(gp.label, x + slot / 2, top + ph + 26, km ? KH_TEXT(27) : LAT_TEXT(21), slot - 6, PALE, 0);
       x += slot;
       if (i < n - 1) {
-        // The colon: two square dots.
-        g.shadowColor = GLOW;
-        g.shadowBlur = 14;
+        // The colon: two small gold diamonds.
         g.fillStyle = GOLD;
-        const d = size * 0.1;
-        g.fillRect(x + colon / 2 - d / 2, cy - size * 0.26, d, d);
-        g.fillRect(x + colon / 2 - d / 2, cy + size * 0.12, d, d);
-        g.shadowBlur = 0;
+        const d = size * 0.065;
+        for (const yy of [cy - size * 0.2, cy + size * 0.16]) {
+          g.beginPath();
+          g.moveTo(x + colon / 2, yy - d);
+          g.lineTo(x + colon / 2 + d, yy);
+          g.lineTo(x + colon / 2, yy + d);
+          g.lineTo(x + colon / 2 - d, yy);
+          g.fill();
+        }
         x += colon;
       }
     });
@@ -387,43 +420,43 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
     switch (b.state) {
       case 'days':
       case 'hms': {
-        drawTitle(km, 78, 3);
-        pill(b.state === 'days' ? word('live', km) : word('last', km), 150, km);
-        text(word('sub', km).replace(String(NYE_YEAR), digits(String(NYE_YEAR), km)), CW / 2, 196, km ? KH_TEXT(24) : LAT_TEXT(20), 520, '#f0cf8e', 6);
+        drawTitle(km, 60, 2.6);
+        pill(b.state === 'days' ? word('live', km) : word('last', km), 122, km);
+        text(word('sub', km).replace(String(NYE_YEAR), digits(String(NYE_YEAR), km)), CW / 2, 162, km ? KH_TEXT(22) : LAT_TEXT(18), 520, PALE, 0);
         const groups = [
           { v: b.h, label: word('h', km) },
           { v: b.m, label: word('m', km) },
           { v: b.s, label: word('s', km) },
         ];
         if (b.state === 'days') groups.unshift({ v: b.d, label: word('d', km) });
-        clockRow(groups, km, 306, b.state === 'days' ? 140 : 170);
+        clockRow(groups, km, b.state === 'days' ? 282 : 288, b.state === 'days' ? 150 : 176);
         break;
       }
       case 'last10': {
-        drawTitle(km, 62, 2);
+        drawTitle(km, 58, 2.2);
         const size = 330;
         const s = digits(String(b.n), km);
-        text(s, CW / 2, 290 + (km ? 18 : 0), km ? KH_DISPLAY(size) : LAT_DIGITS(size), 800, goldFill(120, 450), 44);
+        text(s, CW / 2, 292 + (km ? 18 : 0), km ? KH_DISPLAY(size) : LAT_DIGITS(size), 800, goldFill(120, 450), 40);
         break;
       }
       case 'midnight': {
-        drawTitle(km, 66, 2);
+        drawTitle(km, 58, 2.2);
         sparkles();
-        text(word('happy', km), CW / 2, 196, km ? KH_DISPLAY(96) : LAT_DIGITS(84), 860, goldFill(150, 240), 30);
-        text(digits(String(NYE_YEAR), km), CW / 2, 340, km ? KH_DISPLAY(190) : LAT_DIGITS(190), 760, goldFill(250, 430), 40);
+        text(word('happy', km), CW / 2, 186, km ? KH_DISPLAY(96) : LAT_DIGITS(84), 860, goldFill(140, 230), 26);
+        text(digits(String(NYE_YEAR), km), CW / 2, 334, km ? KH_DISPLAY(190) : LAT_DIGITS(190), 760, goldFill(245, 425), 34);
         break;
       }
       case 'after': {
-        drawTitle(km, 78, 3);
-        text(word('after', km), CW / 2, 250, km ? KH_DISPLAY(104) : LAT_DIGITS(80), 880, goldFill(200, 300), 30);
-        text(`${word('happy', km)} ${digits(String(NYE_YEAR), km)}`, CW / 2, 352, km ? KH_TEXT(38) : LAT_TEXT(32), 700, '#f0cf8e', 10);
+        drawTitle(km, 64, 2.6);
+        text(word('after', km), CW / 2, 246, km ? KH_DISPLAY(104) : LAT_DIGITS(80), 880, goldFill(196, 296), 26);
+        text(`${word('happy', km)} ${digits(String(NYE_YEAR), km)}`, CW / 2, 352, km ? KH_TEXT(38) : LAT_TEXT(32), 700, PALE, 0);
         break;
       }
     }
     const count = players[ground];
     if (count !== null && b.state !== 'last10') {
       const s = `${digits(String(count), km)} ${word('players', km)}`;
-      text(s, CW / 2, CH - 58, km ? KH_TEXT(24) : LAT_TEXT(20), 640, '#f3d9a0', 6);
+      text(s, CW / 2, CH - 50, km ? KH_TEXT(22) : LAT_TEXT(18), 640, PALE, 0);
     }
     if (testTag) {
       // (red, in the top right corner, under the rules)
@@ -452,7 +485,7 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
       [730, 115, 9],
     ];
     g.shadowColor = GLOW;
-    g.shadowBlur = 12;
+    g.shadowBlur = 8;
     g.fillStyle = '#ffe9b0';
     for (const [x, y, r] of pts) {
       g.beginPath();
@@ -525,8 +558,8 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
     update(f: MapFrame) {
       const n = f.night;
       const k = n * n * (3 - 2 * n);
-      // (a lit screen: plain by day, over 1 at night so the gold blooms)
-      material.color.setScalar(1 + k * 1.15);
+      // (a lit screen: plain by day, a little over 1 at night: the brightest gold blooms softly, the dark stays dark)
+      material.color.setScalar(1 + k * 0.32);
       // The picture again at most once a second, and only while it could be read (or never drawn yet).
       const sec = Math.floor(nyeNow() / 1000);
       if (sec === lastSecond && !dirty) return;

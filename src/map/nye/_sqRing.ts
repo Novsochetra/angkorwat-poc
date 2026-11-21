@@ -4,8 +4,10 @@ import { hazeUniforms } from '../sky/haze';
 /**
  * The gathering ring of light on the square's floor (AWP-35; plan.ts `RING`): a Khmer lotus mandala in gold,
  * one additive quad lying on the pavers, its pattern painted once on a canvas (the alpha of the lines; no
- * texture file), breathing softly. Faint gold by day, blooming at night (its colour goes over 1.0 in linear
- * light), brighter and with a slow light running round it on the event night (`event` 0‥1).
+ * texture file), breathing softly. Thin crisp gold lines (the owner's reference: readable from over the gate, never
+ * a blurred disc of light): the petals barely filled, the lines sharp-edged, a faint pool under it. Faint gold by day,
+ * at night the lines' brightest parts just reach the bloom; brighter, with a slow light running round it, on the event
+ * night (`event` 0‥1).
  *
  * The pattern, from the rim in: a double rim, a band of kbach flame tips, sixteen lotus petals with their veins,
  * a ring of dots, eight inner petals, the lotus heart. One draw; its shader is short (one texture read, the haze).
@@ -22,7 +24,7 @@ export interface NyeRing {
 
 export function buildNyeRing(x: number, y: number, z: number, r: number, low: boolean): NyeRing {
   const R = r + PAD;
-  const tex = paintMandala(r, R, low ? 256 : 512);
+  const tex = paintMandala(r, R, low ? 512 : 1024);
   const geo = new PlaneGeometry(2 * R, 2 * R);
   geo.rotateX(-Math.PI / 2);
   const u = {
@@ -67,7 +69,7 @@ export function buildNyeRing(x: number, y: number, z: number, r: number, low: bo
         float d = length(p);
         float lines = texture2D(uMap, vUv).r;
         // (a soft pool of light under the ring, fading out past its rim)
-        float pool = 0.07 * (1.0 - smoothstep(0.6, 1.0, d));
+        float pool = 0.025 * (1.0 - smoothstep(0.6, 1.0, d));
         // On the event night a slow light runs round the ring.
         float run = 1.0 + uEvent * 0.45 * sin(atan(p.y, p.x) * 2.0 - uTime * 0.9);
         vec3 col = uColor * (lines * run + pool) * uLevel;
@@ -94,9 +96,9 @@ export function buildNyeRing(x: number, y: number, z: number, r: number, low: bo
     update(night, event, t) {
       const n = Math.min(1, Math.max(0, (night - 0.15) / 0.6));
       // A slow breath (about 6 s), deeper on the event night.
-      const breathe = 1 + (0.12 + 0.12 * event) * Math.sin(t * (1.05 + 0.25 * event));
-      // Faint gold by day (an inlay catching the light), over 1.0 at night: the bloom picks it up.
-      u.uLevel.value = (0.12 + n * n * (1.25 + 1.0 * event)) * breathe;
+      const breathe = 1 + (0.08 + 0.08 * event) * Math.sin(t * (1.05 + 0.25 * event));
+      // Faint gold by day (an inlay catching the light), bright gold lines at night: only their hearts reach the bloom.
+      u.uLevel.value = (0.12 + n * n * (1.15 + 0.5 * event)) * breathe;
       u.uTime.value = t % 600;
       u.uEvent.value = event;
       mesh.visible = u.uLevel.value > 0.01;
@@ -118,8 +120,9 @@ function paintMandala(r: number, R: number, px: number): CanvasTexture {
   g.fillStyle = '#fff';
   g.lineJoin = 'round';
   g.lineCap = 'round';
+  // (a hair of softness on the lines' edges, no more: they stay crisp from afar)
   g.shadowColor = '#fff';
-  g.shadowBlur = px / 110;
+  g.shadowBlur = px / 700;
   const circle = (rad: number, w: number, alpha = 1) => {
     g.globalAlpha = alpha;
     g.lineWidth = w * k;
@@ -144,10 +147,10 @@ function paintMandala(r: number, R: number, px: number): CanvasTexture {
   for (let i = 0; i < tips; i++) {
     const a = (i / tips) * Math.PI * 2;
     petal(a, r - 1.45 * s, r - 0.6 * s, (Math.PI / tips) * 0.8);
-    g.globalAlpha = 0.85;
+    g.globalAlpha = 0.9;
     g.lineWidth = 0.07 * s * k;
     g.stroke();
-    g.globalAlpha = 0.12;
+    g.globalAlpha = 0.05;
     g.fill();
   }
   circle(r - 1.6 * s, 0.1 * s, 0.9);
@@ -156,7 +159,7 @@ function paintMandala(r: number, R: number, px: number): CanvasTexture {
   for (let i = 0; i < n; i++) {
     const a = ((i + 0.5) / n) * Math.PI * 2;
     petal(a, 3.4 * s, r - 1.85 * s, (Math.PI / n) * 0.92);
-    g.globalAlpha = 0.16;
+    g.globalAlpha = 0.06;
     g.fill();
     g.globalAlpha = 1;
     g.lineWidth = 0.13 * s * k;
@@ -177,7 +180,7 @@ function paintMandala(r: number, R: number, px: number): CanvasTexture {
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
     petal(a, 1.6 * s, 2.95 * s, (Math.PI / 8) * 0.85);
-    g.globalAlpha = 0.2;
+    g.globalAlpha = 0.08;
     g.fill();
     g.globalAlpha = 0.95;
     g.lineWidth = 0.1 * s * k;
@@ -187,8 +190,11 @@ function paintMandala(r: number, R: number, px: number): CanvasTexture {
   circle(1.45 * s, 0.09 * s, 0.9);
   for (let i = 0; i < 8; i++) {
     petal(((i + 0.5) / 8) * Math.PI * 2, 0.45 * s, 1.3 * s, (Math.PI / 8) * 0.8);
-    g.globalAlpha = 0.35;
+    g.globalAlpha = 0.2;
     g.fill();
+    g.globalAlpha = 0.9;
+    g.lineWidth = 0.06 * s * k;
+    g.stroke();
   }
   g.globalAlpha = 1;
   g.beginPath();

@@ -2,7 +2,6 @@ import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { ANIM, perPeriod, type Kit } from '../festival/_kit';
-import type { Glow } from '../festival/_glow';
 import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import { FLAG_WHITE, flagCell } from '../roam/_flag';
@@ -52,7 +51,7 @@ export interface DecorOut {
   trees: [number, number, number][];
 }
 
-export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs: Lamps, glow: Glow | null, low: boolean, garden: readonly BuiltTree[] = []): DecorOut {
+export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs: Lamps, low: boolean, garden: readonly BuiltTree[] = []): DecorOut {
   const src = traceSource();
   /** String-light anchors: map point, θ (for the order round the square), its side (east +1, west −1). */
   const anchors: { x: number; y: number; z: number; th: number }[] = [];
@@ -100,15 +99,15 @@ export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs
     const q = anchors[i + 1];
     // (east side: −90° < θ < 90°; west: 90° < θ < 270°: never across the gate's or the stage's line)
     if (side(p.th) !== side(q.th)) continue;
-    stringLights(kit, bulbs, glow, p, q, 0.9, every, low);
+    stringLights(kit, bulbs, p, q, 0.9, every);
   }
   // Two strings from the square's south corners up to the gate's top corners (beside the way, never across it).
   {
     const [wx, wz] = ell(124, 1.0);
     const [ex, ez] = ell(56, 1.0);
     const g = field.heightAt(GATE.x, GATE.z - 6);
-    stringLights(kit, bulbs, glow, { x: wx, y: g + 5.6, z: wz }, { x: GATE.x - 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every, low);
-    stringLights(kit, bulbs, glow, { x: ex, y: g + 5.6, z: ez }, { x: GATE.x + 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every, low);
+    stringLights(kit, bulbs, { x: wx, y: g + 5.6, z: wz }, { x: GATE.x - 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every);
+    stringLights(kit, bulbs, { x: ex, y: g + 5.6, z: ez }, { x: GATE.x + 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every);
   }
 
   // ── Lotus pots ──
@@ -174,9 +173,10 @@ function banner(kit: Kit, x: number, y: number, z: number, dir: number, w: numbe
 
 /**
  * A string of warm bulbs from p to q, sagging `sag` m: the wire in short straight pieces (the kit), a bulb every
- * `every` m (a glowing box, and a small halo when not on the low level).
+ * `every` m (a glowing box, a small bright point at any distance: `_sqGlow.ts` `clampBulbs`; no halo of its own, the
+ * bloom's is enough).
  */
-function stringLights(kit: Kit, bulbs: Lamps, glow: Glow | null, p: { x: number; y: number; z: number }, q: { x: number; y: number; z: number }, sag: number, every: number, low: boolean): void {
+function stringLights(kit: Kit, bulbs: Lamps, p: { x: number; y: number; z: number }, q: { x: number; y: number; z: number }, sag: number, every: number): void {
   const len = Math.hypot(q.x - p.x, q.z - p.z);
   if (len < 1) return;
   const yaw = Math.atan2(q.x - p.x, q.z - p.z) - Math.PI / 2;
@@ -200,7 +200,6 @@ function stringLights(kit: Kit, bulbs: Lamps, glow: Glow | null, p: { x: number;
     const z = p.z + (q.z - p.z) * u;
     const y = yAt(u) - 0.09;
     bulbs.add([x, y, z], 0.11, 0.8 + 0.4 * hash3(x, z, i, 3));
-    if (!low && i % 2 === 0) glow?.add(x, y, z, 0xffc070, 0.9, { level: 0.45 });
   }
 }
 

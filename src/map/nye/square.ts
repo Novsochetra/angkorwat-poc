@@ -21,7 +21,7 @@ import { plantGarden } from './_sqGarden';
 import { layLanternWalk } from './_sqWalk';
 import { raiseFlags } from './_sqFlags';
 import { buildSala } from './_sqSala';
-import { buildSquareGlow } from './_sqGlow';
+import { buildSquareGlow, clampBulbs } from './_sqGlow';
 import { growMeadow } from './_sqMeadow';
 
 /**
@@ -55,6 +55,8 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const lamps = new Lamps(0.6, 4.6);
   const bulbs = new Lamps(0.35, 3.4);
   bulbs.base.set(0xffc27a);
+  // (the string lights' bulbs small bright points at any distance; the avenue's glow strips as they are)
+  clampBulbs(bulbs.material);
   const u = kitUniforms();
   const kit = new Kit();
   const glow = new Glow();
@@ -74,7 +76,7 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
     }
   buildSala(b, field, lamps, bulbs, glow, low);
   const garden = plantGarden(b, field, lamps, low);
-  const decor = dressSquare(b, kit, field, bulbs, glow, low, garden.trees);
+  const decor = dressSquare(b, kit, field, bulbs, low, garden.trees);
   buildStalls(b, field, lamps, glow, low);
   const wb = new VoxelBuilder();
   const walk = layLanternWalk(wb, field, lamps, glow, low ? 14 : 11);
@@ -159,7 +161,8 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
       bulbs.update(n, now + 1.7);
       ring.update(n, event, now);
       garden.update(n, lit, event > 0);
-      ringLamp.intensity = 110 * lit * (1 + 0.4 * event);
+      // (warm light over the ring, soft: the pavers keep their stone colour and the lotus its gold lines)
+      ringLamp.intensity = 60 * lit * (1 + 0.3 * event);
       gateLamp.intensity = 45 * lit;
       sqGlow.update(f);
       shadows.update(f);
