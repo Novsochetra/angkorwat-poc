@@ -22,6 +22,7 @@ import { layLanternWalk } from './_sqWalk';
 import { raiseFlags } from './_sqFlags';
 import { buildSala } from './_sqSala';
 import { buildSquareGlow } from './_sqGlow';
+import { flickerFlames } from './_sqLightFlicker';
 import { growMeadow } from './_sqMeadow';
 
 /**
@@ -56,6 +57,8 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const bulbs = new Lamps(0.35, 3.4);
   bulbs.base.set(0xffc27a);
   const u = kitUniforms();
+  // (the flames breathe, each its own way: _sqLightFlicker.ts)
+  flickerFlames(lamps.material, u.uTime, 0.14);
   const kit = new Kit();
   const glow = new Glow();
 
@@ -91,7 +94,7 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const mid = walk.length ? walk[Math.floor(walk.length / 2)] : [0, 0];
   const split = splitByPlace(wb, [{ x: walk[0]?.[0] ?? 0, z: walk[0]?.[1] ?? 0 }, { x: mid[0], z: mid[1] }], 30);
   for (const [i, part] of [...split.parts, split.rest].entries()) if (part.boxes.length) object.add(buildVoxelMesh(part, { quality, name: `nye:walk${i}` }));
-  const sqGlow = buildSquareGlow(ctx, { walk, trees: decor.trees });
+  const sqGlow = buildSquareGlow(ctx, { walk, trees: decor.trees, crowns: garden.trees });
   object.add(sqGlow.object);
   const shadows = new ShadowGate(true).addAll(object);
 
@@ -159,7 +162,8 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
       bulbs.update(n, now + 1.7);
       ring.update(n, event, now);
       garden.update(n, lit, event > 0);
-      ringLamp.intensity = 110 * lit * (1 + 0.4 * event);
+      // (a soft fill: the lamps' own pools make the light, not one wash over the floor)
+      ringLamp.intensity = 60 * lit * (1 + 0.3 * event);
       gateLamp.intensity = 45 * lit;
       sqGlow.update(f);
       shadows.update(f);

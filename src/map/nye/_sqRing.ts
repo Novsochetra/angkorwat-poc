@@ -67,7 +67,7 @@ export function buildNyeRing(x: number, y: number, z: number, r: number, low: bo
         float d = length(p);
         float lines = texture2D(uMap, vUv).r;
         // (a soft pool of light under the ring, fading out past its rim)
-        float pool = 0.07 * (1.0 - smoothstep(0.6, 1.0, d));
+        float pool = 0.04 * (1.0 - smoothstep(0.6, 1.0, d));
         // On the event night a slow light runs round the ring.
         float run = 1.0 + uEvent * 0.45 * sin(atan(p.y, p.x) * 2.0 - uTime * 0.9);
         vec3 col = uColor * (lines * run + pool) * uLevel;
@@ -95,8 +95,9 @@ export function buildNyeRing(x: number, y: number, z: number, r: number, low: bo
       const n = Math.min(1, Math.max(0, (night - 0.15) / 0.6));
       // A slow breath (about 6 s), deeper on the event night.
       const breathe = 1 + (0.12 + 0.12 * event) * Math.sin(t * (1.05 + 0.25 * event));
-      // Faint gold by day (an inlay catching the light), over 1.0 at night: the bloom picks it up.
-      u.uLevel.value = (0.12 + n * n * (1.25 + 1.0 * event)) * breathe;
+      // Faint gold by day (an inlay catching the light), just over 1.0 at night: the bloom picks its lines up, softly
+      // enough that the carving still reads (the owner: the ring's pattern vanished in its own glow).
+      u.uLevel.value = (0.12 + n * n * (0.9 + 0.35 * event)) * breathe;
       u.uTime.value = t % 600;
       u.uEvent.value = event;
       mesh.visible = u.uLevel.value > 0.01;
