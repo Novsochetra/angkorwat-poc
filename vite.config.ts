@@ -20,11 +20,11 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
       input: {
-        // (the world map is the entry page, at /)
+        // (the world map is the entry page, at /; the character viewer is /viewer.html)
+        // game.html, studio.html and sacred.html are not in the build: the dev server still serves them,
+        // and the checks (shots, playtest, kitcheck) use them there.
         map: resolve(import.meta.dirname, 'index.html'),
-        game: resolve(import.meta.dirname, 'game.html'),
         viewer: resolve(import.meta.dirname, 'viewer.html'),
-        studio: resolve(import.meta.dirname, 'studio.html'),
       },
     },
   },

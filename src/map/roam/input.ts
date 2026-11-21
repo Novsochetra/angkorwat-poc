@@ -1,5 +1,6 @@
 import { pad } from '../pad/pad';
 import { E_LIST } from './_eChoices';
+import { DRAG_GRAB, dropPending, endGrab, pressGrab, SLOP, type PendingGrab } from './dragGrab';
 import { TouchControls } from './touch';
 import type { RoamInput } from './types';
 
@@ -71,7 +72,8 @@ export class RoamControls {
   private readonly hits = new Set<string>();
   /** Keys pressed from the interface (`press`), for the next poll's taps. */
   private readonly pressed = new Set<string>();
-  private drag: { id: number; x: number; y: number; moved: number; t: number } | null = null;
+  /** A mouse press: where, how far it moved, when; `grab`: it waits to grab a thing he built, or holds one (dragGrab.ts). */
+  private drag: { id: number; x: number; y: number; moved: number; t: number; grab: PendingGrab | 'on' | null } | null = null;
   private clicked = false;
   private readonly look = { yaw: 0, pitch: 0, zoom: 0 };
   /** Tab (+1) and Shift+Tab (−1) since the last poll, while the E list is open. */
@@ -127,9 +129,17 @@ export class RoamControls {
     // Mouse and pen: drag to look (touch: touch.ts).
     canvas.addEventListener('pointerdown', (e) => {
       if (!this.on || this.drag || e.pointerType === 'touch' || e.button > 2) return;
-      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0, t: performance.now() };
+      const d: NonNullable<RoamControls['drag']> = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0, t: performance.now(), grab: null };
+      this.drag = d;
       canvas.setPointerCapture(e.pointerId);
       canvas.style.cursor = 'grabbing';
+      // (the left button on a thing he built, the camera and the phone down: held still, it is a grab, not a look)
+      if (e.button === 0 && !this.photo && !this.script)
+        d.grab = pressGrab(e.clientX, e.clientY, 'mouse', (ok) => {
+          if (this.drag !== d) return;
+          d.grab = ok ? 'on' : null;
+          if (ok) d.moved = SLOP.mouse + 1;
+        });
     });
     canvas.addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'touch') {
@@ -137,7 +147,19 @@ export class RoamControls {
         this.mouse.y = e.clientY;
         this.state.pointer = this.mouse;
       }
+      if (e.pointerType !== 'touch') {
+        DRAG_GRAB.at.x = e.clientX;
+        DRAG_GRAB.at.y = e.clientY;
+      }
       if (!this.drag || e.pointerId !== this.drag.id) return;
+      const g = this.drag.grab;
+      // (a grab: the move is the thing's; waiting for one: still, or past the slop a look after all)
+      if (g === 'on') return;
+      if (g) {
+        if (Math.hypot(e.clientX - g.x, e.clientY - g.y) <= SLOP.mouse) return;
+        dropPending(g);
+        this.drag.grab = null;
+      }
       const [kx, ky] = DRAG[this.photo ?? 'orbit'];
       this.look.yaw -= (e.clientX - this.drag.x) * kx;
       this.look.pitch += (e.clientY - this.drag.y) * ky;
@@ -150,8 +172,11 @@ export class RoamControls {
     });
     const end = (e: PointerEvent) => {
       if (this.drag && e.pointerId === this.drag.id) {
+        const g = this.drag.grab;
+        if (g === 'on') endGrab(e.type === 'pointerup');
+        else dropPending(g);
         // (a press and release in place is a click, not a drag)
-        if (e.type === 'pointerup' && this.drag.moved < 6 && performance.now() - this.drag.t < 500) this.clicked = true;
+        if (g !== 'on' && e.type === 'pointerup' && this.drag.moved < 6 && performance.now() - this.drag.t < 500) this.clicked = true;
         this.drag = null;
         canvas.style.cursor = this.on ? 'grab' : '';
       }
@@ -286,6 +311,8 @@ export class RoamControls {
   private releaseAll(): void {
     this.clear();
     this.keys.clear();
+    if (this.drag?.grab === 'on') endGrab(false);
+    else dropPending(this.drag?.grab ?? null);
     this.drag = null;
     this.orbit = 0;
     this.padLook.yaw = this.padLook.pitch = 0;

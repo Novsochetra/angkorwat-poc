@@ -2,7 +2,7 @@ import { pad } from '../pad/pad';
 import type { UISound } from '../types';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { bikePicture, shopIcon } from './_bikeShopArt';
-import { BIKE_KINDS, BIKE_OWN, costFor, tradeIn, type BikeKindId } from './_bikeOwn';
+import { BIKE_KINDS, BIKE_OWN, costFor, hasAnyBike, hasBike, type BikeKindId } from './_bikeOwn';
 import { CLOSE_X, esc, injectSellStyle, PAD_X } from './_fishSellStyle';
 import { RIEL_ICON } from './_shopIcons';
 import { riel } from './_shopPurse';
@@ -129,29 +129,28 @@ export function createBikeShopCard(d: BikeShopDeps): BikeShopCard {
   let made = '';
 
   /** More than the purse holds (greyed, its price in red). */
-  const dear = (k: BikeKindId): boolean => BIKE_OWN.kind !== k && costFor(k) > shownRiel;
+  const dear = (k: BikeKindId): boolean => !hasBike(k) && costFor(k) > shownRiel;
 
   /** The rows in the language in use (made again only when they change: true then). */
   function fillList(): boolean {
-    const key = `${BIKE_OWN.kind ?? ''}|${BIKE_KINDS.map((k) => `${k.id}:${costFor(k.id)}:${dear(k.id) ? shownRiel : ''}`).join(',')}|${t('bikeShopYours')}|${shortK ?? ''}`;
+    const key = `${BIKE_OWN.bikes.map((b) => b.kind).join('+')}|${BIKE_KINDS.map((k) => `${k.id}:${costFor(k.id)}:${dear(k.id) ? shownRiel : ''}`).join(',')}|${t('bikeShopYours')}|${shortK ?? ''}`;
     if (key === made) return false;
     made = key;
     list.innerHTML = BIKE_KINDS.map((K, i) => {
       const k = K.id;
-      const mine = BIKE_OWN.kind === k;
+      const mine = hasBike(k);
       const cost = costFor(k);
-      const traded = !mine && BIKE_OWN.kind ? tradeIn(BIKE_OWN.kind) : 0;
       const more = dear(k) ? `<span class="bs-more">${esc(t('bikeShopMore', { riel: riel(cost - shownRiel) }))}</span>` : '';
       const line = `<span class="bs-note">${esc(t(K.note))}</span>${more}<span class="bs-short">${esc(t('bikeShopMore', { riel: riel(Math.max(0, cost - shownRiel)) }))}</span>`;
       const price = mine
         ? `<span class="sl-price bs-price"><b>✓ ${esc(t('bikeShopYours'))}</b></span>`
-        : `<span class="sl-price bs-price"><b>${riel(cost)}</b>${traded ? `<s>${riel(K.price)}</s><small>${esc(t('bikeShopTrade', { riel: riel(traded) }))}</small>` : ''}</span>`;
+        : `<span class="sl-price bs-price"><b>${riel(cost)}</b></span>`;
       return `<button type="button" class="sl-item bs-item${mine ? ' is-own' : ''}${dear(k) ? ' is-dear' : ''}${shortK === k ? ' is-short' : ''}" data-i="${i}" role="listitem"><span class="sl-bg"></span><kbd>${i + 1}</kbd>${PAD_X}<span class="bs-pic">${bikePicture(k, K.colour)}</span><span class="sl-name">${esc(t(K.name))}<small>${line}</small></span>${price}</button>`;
     }).join('');
     rows = [...list.querySelectorAll<HTMLButtonElement>('.bs-item')];
     rows.forEach((b, i) => {
       const K = BIKE_KINDS[i];
-      const mine = BIKE_OWN.kind === K.id;
+      const mine = hasBike(K.id);
       b.setAttribute('aria-label', `${t(K.name)}, ${t(K.note)}, ${mine ? t('bikeShopYours') : riel(costFor(K.id))}${dear(K.id) ? ` (${t('bikeShopMore', { riel: riel(costFor(K.id) - shownRiel) })})` : ''}`);
     });
     if (ring >= rows.length) ring = Math.max(0, rows.length - 1);
@@ -167,7 +166,7 @@ export function createBikeShopCard(d: BikeShopDeps): BikeShopCard {
     rielEl.textContent = riel(shownRiel);
     ask.textContent = `“${t(words)}”`;
     hint.textContent = t('bikeShopFoot');
-    hint.hidden = !!BIKE_OWN.kind;
+    hint.hidden = hasAnyBike();
     rows.forEach((b) => (b.disabled = isBusy));
     light();
   }
@@ -272,9 +271,9 @@ export function createBikeShopCard(d: BikeShopDeps): BikeShopCard {
       isBusy = false;
       shortK = null;
       made = '';
-      words = BIKE_OWN.kind ? 'bikeShopHiOwn' : 'bikeShopHi';
+      words = hasAnyBike() ? 'bikeShopHiOwn' : 'bikeShopHi';
       // (the ring starts on the first he does not have)
-      ring = Math.max(0, BIKE_KINDS.findIndex((k) => k.id !== BIKE_OWN.kind));
+      ring = Math.max(0, BIKE_KINDS.findIndex((k) => !hasBike(k.id)));
       open = true;
       fillList();
       fill();

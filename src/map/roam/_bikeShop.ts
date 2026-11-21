@@ -10,14 +10,13 @@ import { TIME } from '../time';
 import type { MapFrame } from '../types';
 import { onLang, t } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
-import { BIKE_KINDS, BIKE_OWN, buyBike, costFor, isKind, kindOf, tradeIn, type BikeKindId } from './_bikeOwn';
+import { BIKE_KINDS, BIKE_OWN, buyBike, costFor, hasBike, isKind, kindOf, type BikeKindId } from './_bikeOwn';
 import { createBikeShopCard, type BikeShopCard } from './_bikeShopCard';
 import { BIKE_SHOP, BIKE_SHOP_ID, SHOP_BUY, SHOP_MECHANIC, SHOP_STOOL, SHOP_TARP, atShopFront, shopLocal, shopOpen, shopToWorld, shopYaw } from './_bikeShopPlan';
 import { buildShopStall, installShopWalk } from './_bikeShopStall';
-import { MAP_SPOTS } from '../ui/_minimapSpots';
+import { MAP_SPOTS, MY_BIKE_IDS } from '../ui/_minimapSpots';
 import { PARKED } from '../hamlet/_mkPlan';
 import { bagNotify } from './_shopBag';
-import { riel } from './_shopPurse';
 import { angleDiff } from './followCam';
 import type { RoamCtx, RoamWorld } from './types';
 
@@ -35,18 +34,18 @@ import type { RoamCtx, RoamWorld } from './types';
  * and the fish sale's), the picture slides so he stands left of the card, the
  * mechanic looks up and asks (people/_saleBack.ts through shop.ts `BROWSE`),
  * and the card opens: the black town bicycle (60,000 ៛), the sky-blue lady's
- * bicycle (85,000 ៛), the red one with a back seat (120,000 ៛). He has one
- * already: the one he picks costs its price less half of his (`tradeIn`: it
- * goes back to the shop; the same one says "Yours"). Short of riel: the row
- * says how much more he needs, and so does the mechanic.
+ * bicycle (85,000 ៛), the red one with a back seat (120,000 ៛). He keeps every
+ * one he buys (one of each kind: one he has says "Yours"); each new one stands
+ * beside the others before the stall. Short of riel: the row says how much
+ * more he needs, and so does the mechanic.
  *
  * Bought: the purse pays (the notes' rustle, the purse glows), the mechanic
  * holds out its key on a red tag and thanks him (`SALE`), he reaches and
  * takes it (`interact`, the key in his fist), the bell rings twice and the
  * new bicycle stands on its stand before the stall's east end (`buyBike`; the
  * bicycle add-on draws it), its badge "My bicycle" on the maps; the card
- * shuts by itself a moment later. Saved (progress.ts): `bike.own`,
- * `bike.ownAt`, `bike.bought`.
+ * shuts by itself a moment later. Saved (progress.ts): `bike.owned`,
+ * `bike.bought`.
  *
  * Out of hours the line before the stall says it is closed till the morning
  * (no key; E says it again); in them, while the mechanic is still walking in,
@@ -210,12 +209,12 @@ function askClose(): void {
   closeVisit();
 }
 
-/** Buy one: the purse pays (less the trade-in), the mechanic hands over the key, the bicycle is his before the stall. */
+/** Buy one: the purse pays, the mechanic hands over the key, the bicycle is his before the stall. */
 function buy(k: BikeKindId): void {
   const v = visit;
   const e = env;
   if (!v || !e || v.sale) return;
-  if (BIKE_OWN.kind === k) {
+  if (hasBike(k)) {
     card?.say('bikeShopYoursSay');
     return;
   }
@@ -227,7 +226,6 @@ function buy(k: BikeKindId): void {
     pad.rumble('tick');
     return;
   }
-  const traded = BIKE_OWN.kind ? tradeIn(BIKE_OWN.kind) : 0;
   lastCtx?.sound('coin', 1);
   pad.rumble('tick');
   bagNotify.update('purse');
@@ -236,7 +234,7 @@ function buy(k: BikeKindId): void {
   sold(lastCtx?.t ?? 0, SHOP, ITEM);
   buyBike(k);
   // (one line: the hud shows one message at a time)
-  e.hud.toast(traded ? t('bikeShopGotTraded', { name: t(kindOf(k).name), riel: riel(traded) }) : t('bikeShopGot', { name: t(kindOf(k).name) }));
+  e.hud.toast(t('bikeShopGot', { name: t(kindOf(k).name) }));
   card?.say('bikeShopBoughtSay');
   card?.refill(k);
   card?.busy(true);
@@ -247,7 +245,7 @@ function buy(k: BikeKindId): void {
     if (ex.currentAction) ex.stop();
     ex.play('interact');
   }
-  console.info(`[map] bikeShop: bought the ${k} bicycle for ${cost} riel${traded ? ` (${traded} traded in)` : ''}; ${e.purse.riel} riel left`);
+  console.info(`[map] bikeShop: bought the ${k} bicycle for ${cost} riel (${BIKE_OWN.bikes.length} his now); ${e.purse.riel} riel left`);
 }
 
 /** One step of the visit (while it holds him): the turn, a sale's hand-over, shutting. */
@@ -481,15 +479,16 @@ const mechanicThere = (): boolean => !SHOP_MECHANIC.ready || SHOP_MECHANIC.atSta
 /**
  * What the stall says to him where he stands: at the buyer's place, open and the mechanic there, "E  Buy…"; anywhere
  * before the stall, open but the mechanic not on his stool yet (walking in), that he is coming; out of hours, that it
- * is closed; else nothing. Standing nearer his own bicycle (delivered before the stall) than the buyer's place: nothing
- * (E rides it).
+ * is closed; else nothing. Standing nearer one of his own bicycles (delivered before the stall) than the buyer's place:
+ * nothing (E rides it).
  */
 function stallSays(x: number, y: number, z: number, floor: number): Said | null {
   if (Math.abs(y - floor) > 2.5) return null;
   const front = atShopFront(x, z);
   const buyHere = atBuy(x, y, z, floor);
   if (!front && !buyHere) return null;
-  if (BIKE_OWN.kind && (x - BIKE_OWN.x) ** 2 + (z - BIKE_OWN.z) ** 2 < (x - BUY_X) ** 2 + (z - BUY_Z) ** 2) return null;
+  const buyD = (x - BUY_X) ** 2 + (z - BUY_Z) ** 2;
+  if (BIKE_OWN.bikes.some((b) => !b.riding && (x - b.x) ** 2 + (z - b.z) ** 2 < buyD)) return null;
   if (!shopOpen(clockNow())) return 'closed';
   if (!mechanicThere()) return 'coming';
   return buyHere ? 'buy' : null;
@@ -500,16 +499,15 @@ const clockNow = (): number => lastFrame?.clock ?? TIME.moment(TIME.days()).cloc
 // ── The maps: "My bicycle" where it stands ───────────────────────────────────
 
 /**
- * The big map's badge for his bicycle (ui/_minimapSpots.ts `my-bike`: the mini-map reads its place each frame; the big
- * map placed its button once): moved to where the bicycle stands, hidden while he has none. Its place in % comes from
- * two fixed badges' (the big map's scale, whatever it is).
+ * The big map's badges for his bicycles (ui/_minimapSpots.ts `MY_BIKE_IDS`, one for each he has, in the order bought:
+ * the mini-map reads their places each frame; the big map placed its buttons once): moved to where each bicycle stands,
+ * hidden while he has none there or rides it. Their place in % comes from two fixed badges' (the big map's scale,
+ * whatever it is).
  */
 function placeBigBadge(): boolean {
   if (typeof document === 'undefined') return true;
-  const btn = document.querySelector<HTMLElement>(".mm-spot[data-id='my-bike']");
-  if (!btn) return false;
-  btn.hidden = !BIKE_OWN.kind || BIKE_OWN.riding;
-  if (btn.hidden) return true;
+  const btns = MY_BIKE_IDS.map((id) => document.querySelector<HTMLElement>(`.mm-spot[data-id='${id}']`));
+  if (btns.some((b) => !b)) return false;
   const a = document.querySelector<HTMLElement>(".mm-spot[data-id='back-hamlet']");
   const b = document.querySelector<HTMLElement>(".mm-spot[data-id='east-village']");
   const pa = REF_A ? { x: REF_A.bx, z: REF_A.bz } : null;
@@ -522,8 +520,13 @@ function placeBigBadge(): boolean {
   if (![ax, az, bx, bz].every(Number.isFinite) || pa.x === pb.x || pa.z === pb.z) return false;
   const sx = (bx - ax) / (pb.x - pa.x);
   const sz = (bz - az) / (pb.z - pa.z);
-  btn.style.left = `${(ax + (BIKE_OWN.x - pa.x) * sx).toFixed(3)}%`;
-  btn.style.top = `${(az + (BIKE_OWN.z - pa.z) * sz).toFixed(3)}%`;
+  btns.forEach((btn, i) => {
+    const o = BIKE_OWN.bikes[i];
+    btn!.hidden = !o || o.riding;
+    if (!o || o.riding) return;
+    btn!.style.left = `${(ax + (o.x - pa.x) * sx).toFixed(3)}%`;
+    btn!.style.top = `${(az + (o.z - pa.z) * sz).toFixed(3)}%`;
+  });
   return true;
 }
 /** `BIKE_OWN.n` when the big map's badge was last placed (−1: not yet: the big map may not be made yet). */
@@ -540,7 +543,7 @@ function quietBigMapNames(): void {
   if (typeof document === 'undefined' || document.getElementById('bs-bigmap-style')) return;
   const st = document.createElement('style');
   st.id = 'bs-bigmap-style';
-  st.textContent = `.mm-spot:is([data-id='bike-shop'], [data-id='my-bike']):not(:hover, :focus-visible, .is-target) .mm-place-label { display: none; }`;
+  st.textContent = `.mm-spot:is([data-id='bike-shop'], ${MY_BIKE_IDS.map((id) => `[data-id='${id}']`).join(', ')}):not(:hover, :focus-visible, .is-target) .mm-place-label { display: none; }`;
   document.head.append(st);
 }
 
@@ -569,7 +572,7 @@ registerAddon({
             ring: card?.ring ?? null,
             busy: !!visit?.sale,
             riel: e.purse.riel,
-            own: BIKE_OWN.kind ? { kind: BIKE_OWN.kind, colour: BIKE_OWN.colour, at: [+BIKE_OWN.x.toFixed(2), +BIKE_OWN.z.toFixed(2), +((BIKE_OWN.yaw * 180) / Math.PI).toFixed(1)] } : null,
+            own: BIKE_OWN.bikes.map((o) => ({ kind: o.kind, colour: o.colour, at: [+o.x.toFixed(2), +o.z.toFixed(2), +((o.yaw * 180) / Math.PI).toFixed(1)] })),
             costs: Object.fromEntries(BIKE_KINDS.map((k) => [k.id, costFor(k.id)])),
             mechanic: { ...SHOP_MECHANIC },
             action: e.explorer.currentAction ?? null,

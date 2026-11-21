@@ -18,6 +18,11 @@ import type { RoamWorld } from './types';
  *   square of the cell and a stake: the cursor; before the first corner it is
  *   all that shows).
  *
+ * - **Move mode's look** (`'pick'`, roam/_buildMove.ts): the building he aims at
+ *   drawn over itself, a hair bigger, gold (red where it cannot be picked up),
+ *   with no cursor; carried (footprint mode with a building he moves), the
+ *   ghost has no cursor either (`set` with a null cursor).
+ *
  * One instanced draw; the blocks are placed when the plan changes (a step of
  * the cursor, a turn of the door), not every frame: a frame only fades it in
  * and out and lets it breathe. Made with roaming (its program compiled before
@@ -35,6 +40,8 @@ const GOLD = new Color(0xffd27a);
 /** The cursor where no corner can go (past his land). */
 const CUR_NO = new Color(0xff6a50);
 const STAKE = new Color(0x6a4a2a);
+/** Move mode's look: each block this much bigger (m: over the building's own), gold. */
+const PICK = { grow: 0.05, tint: 0.6 };
 const KRAMA = new Color(0xc8402e);
 /** Opacity where it can stand and where not; the cursor alone (before the first corner: it must read on the grass). */
 const ALPHA = { ok: 0.36, no: 0.5, cursor: 0.9 };
@@ -72,12 +79,16 @@ export class FootGhost {
   private on = 0;
   private clock = 0;
 
-  constructor(parent: Object3D, private readonly world: RoamWorld) {
+  constructor(
+    parent: Object3D,
+    private readonly world: RoamWorld,
+    private readonly look: 'draw' | 'pick' = 'draw',
+  ) {
     this.mat = new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, toneMapped: true });
     this.mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), this.mat, MAX);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     this.mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(MAX * 3).fill(1), 3);
-    this.mesh.name = 'build:footGhost';
+    this.mesh.name = look === 'pick' ? 'build:footPick' : 'build:footGhost';
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 3;
     this.mesh.castShadow = this.mesh.receiveShadow = false;
@@ -89,13 +100,15 @@ export class FootGhost {
 
   /**
    * What it shows: the plan (null: none yet), the footprint (null: none yet), the first corner (cells, or null) and
-   * the cursor's cell. Placed now (once a change).
+   * the cursor's cell (null: none: a building carried or picked). Placed now (once a change).
    */
-  set(plan: FootPlan | null, rect: FootRect | null, anchor: readonly [number, number] | null, cursor: readonly [number, number]): void {
+  set(plan: FootPlan | null, rect: FootRect | null, anchor: readonly [number, number] | null, cursor: readonly [number, number] | null): void {
     const out = this.boxes;
     out.length = 0;
     this.bare = !rect;
     const f = this.world.field;
+    const pick = this.look === 'pick';
+    const grow = pick ? PICK.grow : 0;
     if (plan)
       for (let b = 0; b < plan.n && out.length < MAX - 400; b++) {
         const raw = plan.raws[b];
@@ -109,15 +122,15 @@ export class FootGhost {
           x: cellMin(i) + ((box[0] + box[3]) / 2) * BLOCK_M,
           y: cellMin(j) + ((box[1] + box[4]) / 2) * BLOCK_M,
           z: cellMin(k) + ((box[2] + box[5]) / 2) * BLOCK_M,
-          sx: (box[3] - box[0]) * BLOCK_M,
-          sy: (box[4] - box[1]) * BLOCK_M,
-          sz: (box[5] - box[2]) * BLOCK_M,
-          ok: c.clone().lerp(OK, TINT.ok),
+          sx: (box[3] - box[0]) * BLOCK_M + grow,
+          sy: (box[4] - box[1]) * BLOCK_M + grow,
+          sz: (box[5] - box[2]) * BLOCK_M + grow,
+          ok: pick ? c.clone().lerp(GOLD, PICK.tint) : c.clone().lerp(OK, TINT.ok),
           no: c.lerp(NO, TINT.no),
         });
       }
     // The footprint's outline on the ground, each side in lengths of at most a metre.
-    if (rect) {
+    if (rect && !pick) {
       const x0 = cellMin(rect.i0) - 0.03;
       const x1 = cellMin(rect.i1 + 1) + 0.03;
       const z0 = cellMin(rect.k0) - 0.03;
@@ -139,6 +152,9 @@ export class FootGhost {
         }
       }
     }
+    this.dirty = true;
+    this.shownOk = null;
+    if (!cursor) return;
     // The cursor: a gold square round its cell and a stake; the first corner: a stake with a red strip.
     const [ci, ck] = cursor;
     const cx = cellMid(ci);

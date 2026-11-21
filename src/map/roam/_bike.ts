@@ -12,7 +12,7 @@ import { lang, t } from '../ui/lang';
 import { registerAddon, touchJump, type AddonEnv, type AddonKey } from './_addons';
 import { buildCanopies, canopyAt } from './_bikeCanopy';
 import { BikeModel, type BikeLook, type BikeTurns } from './_bikeModel';
-import { BIKE_KINDS, BIKE_OWN, bikeOwnFromUrl, HIRE_PRICE, kindOf, leaveBike, onBikeOwn, ridingBike } from './_bikeOwn';
+import { BIKE_KINDS, BIKE_OWN, bikeOwnFromUrl, HIRE_PRICE, kindOf, leaveBike, onBikeOwn, ownBike, ridingBike, type BikeKindId } from './_bikeOwn';
 import { SHOP_DISPLAY, SHOP_DISPLAY_TURN, shopToWorld, shopYaw } from './_bikeShopPlan';
 import { BIKE_SPOTS, type BikeSpot } from './_bikeSpots';
 import { bagNotify } from './_shopBag';
@@ -34,8 +34,8 @@ import { stepSound } from './walker';
  * place); the other three are the neighbours' (by one, a line with no key,
  * "A neighbour's bicycle · buy your own at the market"; E anyway: the
  * neighbour calls out). His own (bought at the morning market's bicycle shop:
- * roam/_bikeShop.ts, kept in roam/_bikeOwn.ts `BIKE_OWN`) is a fifth, in its
- * kind's look and colour, standing where he last left it (saved, kept across
+ * roam/_bikeShop.ts, kept in roam/_bikeOwn.ts `BIKE_OWN`: one of each kind he
+ * has bought, he keeps them all) stand in their kind's look and colour, each where he last left it (saved, kept across
  * Esc back to the map); the shop's three for sale stand in its stall (not to
  * ride). All of them are one `Things`.
  * On foot beside one he may ride, E ("E  Ride the bicycle"): he steps over,
@@ -83,7 +83,7 @@ import { stepSound } from './walker';
  * URL (checks): `bike=ride` starts him on a bicycle at `at=` (facing
  * `yaw=`; his own if he has one, else the nearest), `bike=ride:<m/s>` already
  * rolling; `bikeleft=<spot>:x:z:yaw,…` a bicycle left away from its place;
- * `bikeown=<kind>[:<colour>]`, `bikeownat=x:z:yaw°[:y]` his own and where it stands
+ * `bikeown=<kind>[:<colour>][,…]`, `bikeownat=x:z:yaw°[:y][,…]` his own and where each stands
  * (roam/_bikeOwn.ts); `bikehire=1` the hire bicycle is his for now (bug
  * reports give them all). Its keys in a shot's `sim=`: `w` pedals, `j` hops,
  * `f` rings the bell, `e` gets off.
@@ -249,9 +249,11 @@ type Role = 'hire' | 'neighbour' | 'own';
 const NEIGHBOUR_SAYS = ['bikeNeighbourSay0', 'bikeNeighbourSay1', 'bikeNeighbourSay2'] as const;
 
 interface Bike {
-  /** `wat`, `market`, `village`, `hamlet` (its place's), `own`. */
+  /** `wat`, `market`, `village`, `hamlet` (its place's), `own-<kind>`. */
   readonly id: string;
   readonly role: Role;
+  /** His own: its kind (roam/_bikeOwn.ts `ownBike`: where it stands); null for the others. */
+  readonly kind: BikeKindId | null;
   /** Its place (null: his own, which stands where he left it). */
   readonly spot: BikeSpot | null;
   readonly model: BikeModel;
@@ -309,8 +311,8 @@ function take(x: number, y: number, z: number): void {
   box.z1 = Math.max(box.z1, z);
 }
 const bikes: Bike[] = [];
-/** His own (null until built), the one hired out (by Angkor Wat's road), the shop's three for sale (not to ride). */
-let own: Bike | null = null;
+/** His own, one for each kind the shop sells (shown while he has that one), the one hired out (by Angkor Wat's road), the shop's three for sale (not to ride). */
+const owns: Bike[] = [];
 let hireBike: Bike | null = null;
 const forSale: BikeModel[] = [];
 /** The hire bicycle is his for now (paid); he has left it (got off: it goes back once he is `HIRE_BACK` m off). */
@@ -441,7 +443,7 @@ function build(e: AddonEnv): void {
   const ownSlots = BikeModel.most(OWN_SEED, looks);
   // (a group for each place: its boxes' room, its mesh in roaming's scene; `things` is the market's, the shop's three in it)
   const groupOf = (id: string): string => (id === 'wat' || id === 'hamlet' || id === 'own' ? id : 'east');
-  const room = new Map<string, number>([['own', ownSlots], ['east', looks.reduce((n, l) => n + BikeModel.boxes(SALE_SEED, l), 0)]]);
+  const room = new Map<string, number>([['own', ownSlots * BIKE_KINDS.length], ['east', looks.reduce((n, l) => n + BikeModel.boxes(SALE_SEED, l), 0)]]);
   for (const s of BIKE_SPOTS) room.set(groupOf(s.id.slice(5)), (room.get(groupOf(s.id.slice(5))) ?? 0) + BikeModel.boxes(s.seed));
   const byName = new Map<string, BikeGroup>();
   for (const [name, n] of room) {
@@ -461,15 +463,18 @@ function build(e: AddonEnv): void {
   for (const spot of BIKE_SPOTS) {
     const g = group(spot.id.slice(5));
     const model = new BikeModel(g.things, spot.seed);
-    const b: Bike = { id: spot.id.slice(5), role: spot.role, spot, model, shown: true, pos: new Vector3(), yaw: 0, lean: 0, pitch: 0, turns: turns(), moved: false };
+    const b: Bike = { id: spot.id.slice(5), role: spot.role, kind: null, spot, model, shown: true, pos: new Vector3(), yaw: 0, lean: 0, pitch: 0, turns: turns(), moved: false };
     bikes.push(b);
     g.bikes.push(b);
     if (spot.role === 'hire') hireBike = b;
     home(b, e.world);
   }
-  own = { id: 'own', role: 'own', spot: null, model: new BikeModel(group('own').things, OWN_SEED, lookOf(BIKE_OWN.kind ?? 'town'), ownSlots), shown: false, pos: new Vector3(), yaw: 0, lean: 0, pitch: 0, turns: turns(), moved: false };
-  bikes.push(own);
-  group('own').bikes.push(own);
+  for (const k of BIKE_KINDS) {
+    const b: Bike = { id: `own-${k.id}`, role: 'own', kind: k.id, spot: null, model: new BikeModel(group('own').things, OWN_SEED, lookOf(k.id), ownSlots), shown: false, pos: new Vector3(), yaw: 0, lean: 0, pitch: 0, turns: turns(), moved: false };
+    owns.push(b);
+    bikes.push(b);
+    group('own').bikes.push(b);
+  }
   ownChanged(e);
   onBikeOwn(() => env && ownChanged(env));
   // The shop's three for sale: side by side in its stall, on their stands, pointing out to the street (written once).
@@ -516,36 +521,40 @@ const OWN_SEED = 5;
 const SALE_SEED = 6;
 
 /** How a bicycle of `kind` looks, new from the shop (its colour, nothing carried). */
-const lookOf = (kind: (typeof BIKE_KINDS)[number]['id']): BikeLook => ({ kind, colour: kind === BIKE_OWN.kind ? BIKE_OWN.colour : kindOf(kind).colour, cargo: false });
+const lookOf = (kind: BikeKindId): BikeLook => ({ kind, colour: ownBike(kind)?.colour ?? kindOf(kind).colour, cargo: false });
 
 /** Back to its place, on its stand (his own: where he left it, on the floor he left it on). */
 function home(b: Bike, world: RoamWorld): void {
   const s = b.spot;
-  const x = s ? s.x : BIKE_OWN.x;
-  const z = s ? s.z : BIKE_OWN.z;
-  b.pos.set(x, s ? groundUnder(world, x, z) : floorAt(world, x, BIKE_OWN.y, z), z);
-  b.yaw = s ? s.yaw : BIKE_OWN.yaw;
+  const o = b.kind ? ownBike(b.kind) : undefined;
+  if (!s && !o) return;
+  const x = s ? s.x : o!.x;
+  const z = s ? s.z : o!.z;
+  b.pos.set(x, s ? groundUnder(world, x, z) : floorAt(world, x, o!.y, z), z);
+  b.yaw = s ? s.yaw : o!.yaw;
   park(b);
   b.turns.crank = PARK_CRANK;
   b.moved = false;
 }
 
-/** His bicycle changed (bought, traded in, a URL's): its look, where it stands, shown or not. Not while he rides it. */
+/** His bicycles changed (one bought, a URL's): each one's look, where it stands, shown or not. Not the one he rides. */
 function ownChanged(e: AddonEnv): void {
-  const b = own;
-  if (!b || (ride === b && phase !== 'off')) return;
-  b.shown = BIKE_OWN.kind !== null;
-  if (!BIKE_OWN.kind) {
-    b.model.hide();
-    return;
+  for (const b of owns) {
+    if (ride === b && phase !== 'off') continue;
+    const o = ownBike(b.kind!);
+    b.shown = o !== undefined;
+    if (!o) {
+      b.model.hide();
+      continue;
+    }
+    b.model.restyle({ kind: o.kind, colour: o.colour, cargo: false });
+    home(b, e.world);
   }
-  b.model.restyle({ kind: BIKE_OWN.kind, colour: BIKE_OWN.colour, cargo: false });
-  home(b, e.world);
 }
 
 /** His own bicycle stands where it is now (he got off it, or the ride stopped): kept between visits. */
 function ownLeft(b: Bike): void {
-  if (b.role === 'own') leaveBike(b.pos.x, b.pos.z, b.yaw, b.pos.y);
+  if (b.kind) leaveBike(b.kind, b.pos.x, b.pos.z, b.yaw, b.pos.y);
 }
 
 /** On its stand where it is: leaning on it, the bars turned a little, the lamp off (the pedals as he left them). */
@@ -980,7 +989,7 @@ function start(ctx: RoamCtx, b: Bike, at = false): void {
   const e = env!;
   ride = b;
   // (his own: its badge on the maps goes while he rides it)
-  if (b.role === 'own') ridingBike(true);
+  if (b.kind) ridingBike(b.kind, true);
   phase = at ? 'ride' : 'mount';
   u = 0;
   from.copy(ctx.body.pos);
@@ -1580,7 +1589,10 @@ registerAddon({
       const p = ctx.body.pos;
       let best = bikes[0];
       for (const b of bikes) if (b.shown && b.pos.distanceToSquared(p) < best.pos.distanceToSquared(p)) best = b;
-      if (own?.shown) best = own;
+      // (his own nearest, if he has one)
+      let mine: Bike | null = null;
+      for (const b of owns) if (b.shown && (!mine || b.pos.distanceToSquared(p) < mine.pos.distanceToSquared(p))) mine = b;
+      if (mine) best = mine;
       // (a check's ride on the hire bicycle: it is hired)
       if (best.role === 'hire') hired = true;
       start(ctx, best, true);
@@ -1598,10 +1610,13 @@ registerAddon({
       .filter((b) => b.spot && b.moved && (b !== ride || phase === 'dismount'))
       .map((b) => `${b.id}:${b.pos.x.toFixed(1)}:${b.pos.z.toFixed(1)}:${deg(b.yaw)}`);
     if (left.length) out.bikeleft = left.join(',');
-    if (BIKE_OWN.kind && own) {
-      out.bikeown = BIKE_OWN.colour === kindOf(BIKE_OWN.kind).colour ? BIKE_OWN.kind : `${BIKE_OWN.kind}:${BIKE_OWN.colour}`;
+    if (BIKE_OWN.bikes.length) {
+      out.bikeown = BIKE_OWN.bikes.map((o) => (o.colour === kindOf(o.kind).colour ? o.kind : `${o.kind}:${o.colour}`)).join(',');
       // (ridden now: where it is, and `bike=ride` puts him back on it)
-      out.bikeownat = `${own.pos.x.toFixed(1)}:${own.pos.z.toFixed(1)}:${deg(own.yaw)}:${own.pos.y.toFixed(2)}`;
+      out.bikeownat = BIKE_OWN.bikes
+        .map((o) => owns.find((b) => b.kind === o.kind)!)
+        .map((b) => `${b.pos.x.toFixed(1)}:${b.pos.z.toFixed(1)}:${deg(b.yaw)}:${b.pos.y.toFixed(2)}`)
+        .join(',');
     }
     if (hired) out.bikehire = '1';
     return Object.keys(out).length ? out : null;
@@ -1629,7 +1644,7 @@ export function bikeDebug(): unknown {
     block: lastBlock,
     riding: ride?.id ?? null,
     hired,
-    own: BIKE_OWN.kind ? { kind: BIKE_OWN.kind, colour: BIKE_OWN.colour, at: [+BIKE_OWN.x.toFixed(2), +BIKE_OWN.z.toFixed(2), +((BIKE_OWN.yaw * 180) / Math.PI).toFixed(1)] } : null,
+    own: BIKE_OWN.bikes.map((o) => ({ kind: o.kind, colour: o.colour, riding: o.riding, at: [+o.x.toFixed(2), +o.z.toFixed(2), +((o.yaw * 180) / Math.PI).toFixed(1)] })),
     bikes: bikes.map((b) => ({ id: b.id, role: b.role, x: +b.pos.x.toFixed(2), y: +b.pos.y.toFixed(2), z: +b.pos.z.toFixed(2), yaw: +((b.yaw * 180) / Math.PI).toFixed(1), shown: b.model.shown, look: `${b.model.look.kind}:${b.model.look.colour}` })),
     forSale: forSale.map((m) => `${m.look.kind}:${m.look.colour}`),
   };

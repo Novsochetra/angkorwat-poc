@@ -11,7 +11,7 @@ import { OX } from '../people/_ox';
 import type { AnimalCall } from '../types';
 import { hash3 } from '../../voxel/random';
 import { drawRideCow } from '../people/_oxRide';
-import { BIKE_OWN } from './_bikeOwn';
+import { BIKE_OWN, type OwnBike } from './_bikeOwn';
 import { lineWalk, PathSearch } from './_dogPath';
 import { CattleBlocks } from './_cattleBlocks';
 import type { RoamWorld } from './types';
@@ -211,16 +211,19 @@ function inBody(x: number, z: number, yaw: number, size: number, px: number, pz:
   return Math.abs(dx * fz - dz * fx) < BODY_HALF * size + pad;
 }
 const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
-/** In his bicycle where he left it (roam/_bikeOwn.ts `BIKE_OWN`: from its back tyre to its front one, its bars), grown by `pad` (m). */
-function bikeAt(x: number, z: number, pad: number): boolean {
-  if (!BIKE_OWN.kind || BIKE_OWN.riding) return false;
-  const dx = x - BIKE_OWN.x;
-  const dz = z - BIKE_OWN.z;
-  if (dx * dx + dz * dz > 9) return false;
-  const fx = Math.sin(BIKE_OWN.yaw);
-  const fz = Math.cos(BIKE_OWN.yaw);
-  const along = dx * fx + dz * fz;
-  return along > -0.75 - pad && along < 1.1 + pad && Math.abs(dx * fz - dz * fx) < 0.32 + pad;
+/** In one of his bicycles where he left it (roam/_bikeOwn.ts `BIKE_OWN`: from its back tyre to its front one, its bars), grown by `pad` (m): which, or null. */
+function bikeAt(x: number, z: number, pad: number): OwnBike | null {
+  for (const b of BIKE_OWN.bikes) {
+    if (b.riding) continue;
+    const dx = x - b.x;
+    const dz = z - b.z;
+    if (dx * dx + dz * dz > 9) continue;
+    const fx = Math.sin(b.yaw);
+    const fz = Math.cos(b.yaw);
+    const along = dx * fx + dz * fz;
+    if (along > -0.75 - pad && along < 1.1 + pad && Math.abs(dx * fz - dz * fx) < 0.32 + pad) return b;
+  }
+  return null;
 }
 /** Where his cows sold wait by the trader's trough (his place's frame), side by side, until nobody sees them. */
 const LEAVE_SPOTS: readonly (readonly [number, number])[] = [
@@ -1121,12 +1124,13 @@ export class CattleHerd {
     if (b.waitCow > 0) b.waitCow = 0;
     else if (b.waitCow < 0) b.waitCow = Math.min(0, b.waitCow + dt);
     // (his bicycle left in its way after it set off: round it; no room round it, it waits)
-    if (b.waitCow >= 0 && BIKE_OWN.kind && !BIKE_OWN.riding) {
+    if (b.waitCow >= 0 && BIKE_OWN.bikes.length) {
       const fx = Math.sin(b.yaw);
       const fz = Math.cos(b.yaw);
-      for (let k = 0; k < AHEAD_U.length; k++)
-        if (bikeAt(b.x + fx * AHEAD_U[k] * b.size, b.z + fz * AHEAD_U[k] * b.size, 0.15 + BODY_HALF * b.size)) {
-          if (this.goRound(b, BIKE_OWN.x, BIKE_OWN.z, 1.0 + BODY_HALF * b.size, 0.3)) {
+      for (let k = 0; k < AHEAD_U.length; k++) {
+        const bike = bikeAt(b.x + fx * AHEAD_U[k] * b.size, b.z + fz * AHEAD_U[k] * b.size, 0.15 + BODY_HALF * b.size);
+        if (bike) {
+          if (this.goRound(b, bike.x, bike.z, 1.0 + BODY_HALF * b.size, 0.3)) {
             b.waitCow = -3;
             break;
           }
@@ -1135,6 +1139,7 @@ export class CattleHerd {
           if (b.waitCow > 25 && !this.seen(b.x, b.z)) this.home(b, false);
           return;
         }
+      }
     }
     // (him in its way, right before its nose: it stops and waits, its head up; a few seconds and it goes round him)
     if (this.roaming) {

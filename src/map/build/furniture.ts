@@ -98,7 +98,8 @@ export const FURNITURE: Record<FurnitureId, PieceSpec> = {
   bench: {
     id: 'bench', name: 'buildBench', line: 'buildBenchLine', price: 11_500, cost: { bamboo: 2, log: 1, clay: 1 }, secs: 6, w: 1.85, d: 0.55, h: 0.9, max: 4,
     solids: [[0, 0, 1.8, 0.5, 0.5]],
-    seat: { x: -0.3, y: 0.5, z: 0, yaw: 0 },
+    // (no back: either side; along it, short of the jug and cups at its +x end)
+    seat: { x: -0.3, y: 0.5, z: 0, yaw: 0, both: true, along: [-0.7, 0.15] },
   },
   // The loom: its frame (1.7 × 1.3 m, 1.35 m high), the silk warp, the cloth beam, the weaver's low bench before it (+z).
   loom: {

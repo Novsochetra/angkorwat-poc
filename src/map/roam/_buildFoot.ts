@@ -4,6 +4,7 @@ import { FOOT_KIND_IDS, FOOT_KINDS, planFoot, rectD, rectOf, rectW, sizeFault, c
 import { FOOTS, footPlan, partFoot, type FootRec } from '../build/footState';
 import { haveOf, MATERIAL_IDS, materialsText, missingOf, noMaterials, rielOf, useMaterials, type Materials } from '../build/materials';
 import { materialIcon } from '../build/materialIcons';
+import { paintGive, paintTake } from '../build/paint';
 import { BUILT } from '../build/pieces';
 import { inPlot, plotBlocks, PLOT_BOX, PLOT_BUDGET } from '../build/plot';
 import type { PieceLookData } from '../build/view';
@@ -47,6 +48,14 @@ import type { RoamCtx, RoamWorld } from './types';
  *   his land, by the house (and the grandmother's places), the ground not
  *   level enough for its kind, a tree, a plant, something he built, something
  *   else), his land's budget, not enough riel for what he lacks.
+ * - **Carried** (move mode, roam/_buildMove.ts: a finished one he picked up,
+ *   `carry`): its footprint goes with him at its own size, before his feet (or
+ *   where the mouse points, or the tap), no corners to mark; `,` / `.` turn
+ *   the whole building a quarter (its door side with it); the same rules as a
+ *   new one's, its own land not counted (`FOOTS.skip`), nothing to pay (his
+ *   land's budget counts its blocks once). "E  Put it here": `putDown`
+ *   (`FOOTS.move`: its blocks taken up and written at the new place at once,
+ *   their paint kept); Esc puts it back (it never left). No cost panel.
  */
 
 export type FootReason = BuildReason | 'small' | 'most' | 'room' | 'money';
@@ -76,6 +85,9 @@ let anchor: [number, number] | null = null;
 const cursor: [number, number] = [0, 0];
 let door: FootSide = 2;
 let doorTurned = false;
+/** The building he carries in move mode (null: drawing a new one), and its size now (cells: across x, along z). */
+let carried: FootRec | null = null;
+const carrySize: [number, number] = [0, 0];
 /** Where the cursor comes from: before his feet, the mouse's pointer, a tap (held). */
 let src: 'ahead' | 'mouse' | 'tap' = 'ahead';
 let held: [number, number] | null = null;
@@ -202,7 +214,7 @@ export function footJob(rec: FootRec, heightAt: (x: number, z: number) => number
 const _ray = new Raycaster();
 const _ndc = new Vector2();
 /** The land's point under a screen point (px), or null. */
-function landHit(camera: PerspectiveCamera, px: number, py: number): [number, number] | null {
+export function landHit(camera: PerspectiveCamera, px: number, py: number): [number, number] | null {
   if (!env) return null;
   const r = env.canvas.getBoundingClientRect();
   _ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
@@ -257,6 +269,12 @@ function wireTap(): void {
 
 /** The cursor's cell now (into `cursor`). */
 function aim(ctx: RoamCtx): void {
+  // (dragged: where the drag holds it, roam/_build.ts; not the mouse's own cell)
+  if (FootMode.dragging && held) {
+    cursor[0] = held[0];
+    cursor[1] = held[1];
+    return;
+  }
   const i = ctx.input;
   if (Math.hypot(i.move.x, i.move.y) > 0.2) {
     src = 'ahead';
@@ -362,7 +380,10 @@ export const FootMode = {
     wireTap();
   },
   exit(): void {
+    this.dragging = false;
     if (!kind) return;
+    if (carried) FOOTS.skip(null);
+    carried = null;
     kind = null;
     anchor = null;
     held = null;
@@ -373,7 +394,7 @@ export const FootMode = {
 
   /** Esc: the first corner again, else out of the mode. True: still in it. */
   back(): boolean {
-    if (anchor) {
+    if (anchor && !carried) {
       anchor = null;
       now.step = -1;
       return true;
@@ -385,6 +406,8 @@ export const FootMode = {
   /** `,` / `.`: the door side a quarter round (−1 / +1). */
   turnDoor(dir: number): void {
     door = (((door + dir) % 4) + 4) % 4 as FootSide;
+    // (carried: the whole building turns a quarter, its door side with it)
+    if (carried) [carrySize[0], carrySize[1]] = [carrySize[1], carrySize[0]];
     doorTurned = true;
     now.step = -1;
   },
@@ -403,6 +426,52 @@ export const FootMode = {
     }
   },
 
+  /** Move mode picked up `rec` (a finished one): it goes with him (see the mode's comment). */
+  carry(rec: FootRec): void {
+    this.enter(rec.kind);
+    carried = rec;
+    FOOTS.skip(rec);
+    carrySize[0] = rectW(rec.rect);
+    carrySize[1] = rectD(rec.rect);
+    door = rec.door;
+    doorTurned = true;
+    src = 'ahead';
+    held = null;
+  },
+  /** Carried by a press and drag (roam/_build.ts): the prompt says "Let go to put it here". */
+  dragging: false,
+  /** Worked out again now (before a put down: the pointer may have moved since the step). */
+  refresh(ctx: RoamCtx): void {
+    now.step = -1;
+    this.step(ctx);
+  },
+  /** The building he carries (null: none). */
+  get carrying(): FootRec | null {
+    return carried;
+  },
+  /** A check's carried building held at a spot (`buildmove=foot:<uid>@x/z[/door]`: its middle, m; the door side turns it). */
+  holdCarry(x: number, z: number, side: FootSide | null): void {
+    if (!carried) return;
+    if (side !== null && (side - door + 4) % 2) [carrySize[0], carrySize[1]] = [carrySize[1], carrySize[0]];
+    if (side !== null) door = side;
+    held = [cellOf(x), cellOf(z)];
+    src = 'tap';
+    now.step = -1;
+  },
+
+  /** "Put it here" (carried, the spot allowed): it moves (`FOOTS.move`), out of the mode. True: moved. */
+  putDown(ctx: RoamCtx): boolean {
+    const rec = carried;
+    if (!env || !rec || !now.rect || now.reason) return false;
+    const from = rec.rect;
+    if (!FOOTS.move(rec, now.rect, door, { take: paintTake, give: paintGive })) return false;
+    env.uiSound('select');
+    ctx.hud.toast(t('buildMoved', { name: footWord(rec.kind) }));
+    console.info(`[foot] ${rec.uid} moved from cells ${from.i0},${from.k0}‥${from.i1},${from.k1} to ${rec.rect.i0},${rec.rect.k0}‥${rec.rect.i1},${rec.rect.k1} door ${rec.door}: ${FOOTS.plan(rec).n} blocks`);
+    this.exit();
+    return true;
+  },
+
   /** Once a step (in the mode, on foot, free): the cursor, the footprint, its plan, the reasons, the prompt. */
   step(ctx: RoamCtx): void {
     if (!kind || now.step === stepN) return;
@@ -411,7 +480,21 @@ export const FootMode = {
     aim(ctx);
     if (!doorTurned) door = sideToCamera(ctx);
     let rect: FootRect | null = null;
-    if (anchor) {
+    if (carried) {
+      // (its middle: before his feet, its near side a step ahead; or where the mouse points or the tap was)
+      const [w, d] = carrySize;
+      if (src === 'ahead') {
+        const b = ctx.body;
+        const fx = Math.sin(b.yaw);
+        const fz = Math.cos(b.yaw);
+        const half = (Math.abs(fx) * w + Math.abs(fz) * d) * BLOCK_M * 0.5;
+        cursor[0] = cellOf(b.pos.x + fx * (AHEAD + half));
+        cursor[1] = cellOf(b.pos.z + fz * (AHEAD + half));
+      }
+      const i0 = cursor[0] - Math.floor(w / 2);
+      const k0 = cursor[1] - Math.floor(d / 2);
+      rect = { i0, k0, i1: i0 + w - 1, k1: k0 + d - 1 };
+    } else if (anchor) {
       const [ci, ck] = clampCorner(kind, anchor[0], anchor[1], cursor[0], cursor[1]);
       cursor[0] = ci;
       cursor[1] = ck;
@@ -421,13 +504,23 @@ export const FootMode = {
       if (kind === 'fence' && Math.min(rectW(rect), rectD(rect)) < FOOT_KINDS.fence.min)
         rect = rectW(rect) >= rectD(rect) ? { ...rect, k0: anchor[1], k1: anchor[1] } : { ...rect, i0: anchor[0], i1: anchor[0] };
     }
-    const key = rect ? `${kind}|${rect.i0},${rect.k0},${rect.i1},${rect.k1}|${door}|${BUILT.version}|${FOOTS.list.length}` : `${kind}|-|${cursor[0]},${cursor[1]}`;
+    const key = rect ? `${carried ? `carry:${carried.uid}|` : ''}${kind}|${rect.i0},${rect.k0},${rect.i1},${rect.k1}|${door}|${BUILT.version}|${FOOTS.list.length}` : `${kind}|-|${cursor[0]},${cursor[1]}`;
     if (key !== now.key) {
       now.key = key;
       now.rect = rect;
       now.plan = rect && !sizeFault(kind, rect) ? footPlan(kind, rect, door) : null;
       now.land = rect ? (sizeFault(kind, rect) ? 'small' : landRules(ctx.world, now.plan!)) : inPlot(cellMid(cursor[0]), cellMid(cursor[1])) ? null : 'plot';
-      ghost?.set(now.plan, rect, anchor, cursor);
+      ghost?.set(now.plan, rect, anchor, carried ? null : cursor);
+    }
+    if (carried) {
+      // (his already: nothing to pay, none of its kind more; his land's budget with its blocks where they are now taken up)
+      let r: FootReason | null = now.land;
+      if (!r && now.plan && plotBlocks() - FOOTS.plan(carried).n + now.plan.n > PLOT_BUDGET) r = 'room';
+      now.missing = {};
+      now.riel = 0;
+      now.reason = r;
+      now.prompt = promptNow();
+      return;
     }
     // (the budget and his riel can change while he stands: asked each step, cheaply)
     let r: FootReason | null = FOOTS.count(kind) >= FOOT_KINDS[kind].most ? 'most' : now.land;
@@ -446,6 +539,10 @@ export const FootMode = {
     if (!kind) return;
     now.step = -1;
     this.step(ctx);
+    if (carried) {
+      if (!now.reason && now.plan) build(ctx);
+      return;
+    }
     if (!anchor) {
       if (now.reason) return;
       anchor = [cursor[0], cursor[1]];
@@ -507,7 +604,7 @@ export const FootMode = {
     ghost?.show(free && !!kind, !now.reason);
     // (the panel not over the explorer menu or a card that asks: it is the drawing's, and only while he draws)
     const over = typeof document !== 'undefined' && (document.body.classList.contains('rxm-open') || document.body.classList.contains('mu-asking'));
-    showPanel(free && !!kind && !over);
+    showPanel(free && !!kind && !carried && !over);
   },
 
   /** A new step of roaming (the work of `step` is done once a step). */
@@ -523,6 +620,7 @@ export const FootMode = {
   state() {
     return {
       kind,
+      carrying: carried?.uid ?? null,
       step: [now.step, stepN],
       anchor,
       cursor: [...cursor],
@@ -542,7 +640,7 @@ export const FootMode = {
   },
   /** A check's URL value for the mode now (`footdraw=`), or null. */
   report(): string | null {
-    if (!kind) return null;
+    if (!kind || carried) return null;
     const m = (c: number) => +cellMin(c).toFixed(2);
     if (!anchor) return kind;
     return `${kind}@${m(anchor[0])}/${m(anchor[1])}/${m(cursor[0])}/${m(cursor[1])}:${door}`;
@@ -555,6 +653,13 @@ function promptNow(): string | null {
   const touch = onTouch();
   const r = now.reason;
   const keys = (b: boolean) => (b ? `,.  ${t('footDoor')}  ·  Esc  ${t('footAgain')}` : `F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
+  if (carried) {
+    const size = now.rect ? sizeWords(now.rect) : '';
+    const tail = `${size}  ·  ,.  ${t('buildTurn')}  ·  Esc  ${t('movePutBack')}`;
+    if (r) return touch ? reasonWords(r) : `${reasonWords(r)}  ·  ${tail}`;
+    if (FootMode.dragging) return touch ? t('dragHere') : `${t('dragHere')}  ·  ${tail}`;
+    return touch ? `E  ${t('buildMoveHere')} ${size}` : `E  ${t('buildMoveHere')}  ·  ${tail}`;
+  }
   if (!anchor) {
     if (r) return touch ? reasonWords(r) : `${reasonWords(r)}  ·  ${keys(false)}`;
     return touch ? `E  ${t('footMark')}` : `E  ${t('footMark')}  ·  ${keys(false)}`;

@@ -56,7 +56,11 @@ export interface PieceSpec {
   /** Solid parts for the walk map (boxes: middle x, z, size w, d, top over the ground). Posts, rails, walls, a jar. */
   readonly solids: readonly (readonly [x: number, z: number, w: number, d: number, top: number])[];
   /** Where he sits on it (a seat's middle and the way he faces), if he may. */
-  readonly seat?: { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number; readonly lie?: boolean };
+  /**
+   * Where he sits (its frame: x, z, height y, facing `yaw` from its +z) or lies (`lie`). `both`: no back, he sits facing
+   * out from the side he comes from (+z or −z); `along`: anywhere between these x where he stands (else at `x`).
+   */
+  readonly seat?: { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number; readonly lie?: boolean; readonly both?: boolean; readonly along?: readonly [number, number] };
   /** The hammock's tie points (roam/_hammockSpots.ts `addHammock`: the cloth hangs between them). */
   readonly ties?: readonly [readonly [number, number, number], readonly [number, number, number]];
   /**

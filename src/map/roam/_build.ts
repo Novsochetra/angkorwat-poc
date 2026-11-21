@@ -2,7 +2,7 @@ import { BAG, MATERIAL_IDS, STORE, haveOf, materialsText, missingOf, noMaterials
 import { boughtRiel, BUILT, FENCE_RUN, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { addPlotBlocks, inPlot, pastPlot, PLOT_AREA, PLOT_BOX, PLOT_BUDGET, PLOT_CORNERS, plotBlocks, plotBlocksBy } from '../build/plot';
 import { createPlotEdge, type PlotEdge } from '../build/plotEdge';
-import { BLOCKS, cellMid, cellOf, CHUNK_CELLS, CHUNK_N } from '../blocks/store';
+import { BLOCKS, cellMid, cellMin, cellOf, CHUNK_CELLS, CHUNK_N } from '../blocks/store';
 import { BUILD, distTo, toLocal } from '../build/state';
 import { FOOT_KIND_IDS, FOOT_KINDS, type FootKind, type FootSide } from '../build/footPlan';
 import { FOOTS, partFoot, type FootRec } from '../build/footState';
@@ -19,15 +19,18 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
-import { MoveMode, whyNot } from './_buildMove';
-import { byHouse, canBuild, fenceEnd, fenceJoint, ghostAhead, MEET, overlapsBuilt } from './_buildSpots';
+import { grabAt, MoveMode, whyNot, whyNotFoot, type Grabbed } from './_buildMove';
+import { DRAG_GRAB } from './dragGrab';
+import { byHouse, canBuild, fenceEnd, fenceJoint, ghostAhead, landMapOf, MEET, overlapsBuilt } from './_buildSpots';
+import type { LandMap } from './_buildLand';
+import { LandView } from './_buildLandView';
 import { BuildUses } from './_buildUses';
 import { furnFromUrl, furnitureHeldBy, furnReport, installFurniture } from './_buildFurniture';
 import { furnSpot, onFurnFloor, reasonWord, type FurnReason } from './_buildFurnSpots';
 import { FURN, FURN_GRID, isFurniture } from '../build/furniture';
 import { installBuildWalk } from './_buildWalk';
 import { backWords, BuildWork, pieceJob, pieceWord, type WorkJob } from './_buildWork';
-import { cannotFoot, fillFoot, footJob, FootMode, footWord, minPlan } from './_buildFoot';
+import { cannotFoot, fillFoot, footJob, FootMode, footWord, landHit, minPlan } from './_buildFoot';
 import { riel } from './_shopPurse';
 import { touchUseHeld } from './touch';
 import type { RoamCtx } from './types';
@@ -141,8 +144,20 @@ let shiftDown = false;
 /** Shift was down as , or . went down (the fine turn: read on the key's own press, a quick chord is not missed). */
 let fineKey = false;
 /** Build mode now (worked out once a step): the spot (m), its turn, can it stand there, why not, the prompt. */
-const spot = { x: 0, y: 0, z: 0, yaw: 0, ok: false, reason: null as FurnReason | null, step: -1, prompt: null as string | null, snapped: false, ceil: Infinity, len: undefined as number | undefined };
+const spot = { x: 0, y: 0, z: 0, yaw: 0, ok: false, reason: null as FurnReason | null, step: -1, prompt: null as string | null, snapped: false, ceil: Infinity, len: undefined as number | undefined, edge: false };
 let stepN = 0;
+/**
+ * Press and drag (dragGrab.ts): the thing he holds with the mouse or a finger, carried as a moved one (build mode with
+ * it, or footprint mode carrying a building), its middle this far from the ground point under the pointer (m: where
+ * he grabbed it). Let go: put down there if it may stand, else put back.
+ */
+let drag: { foot: boolean; offX: number; offZ: number } | null = null;
+/** The ground point under the pointer while he drags (world x, z), or null (the pointer over the sky). */
+let dragGround: [number, number] | null = null;
+/** The roaming mode now (press and drag only on foot). */
+let lastMode: RoamMode = 'overview';
+/** The thing under the mouse last step (the canvas's cursor changes with it). */
+let hovered: Grabbed | null = null;
 /** What E does by a piece (or a footprint building) now (once a step). */
 const near = { step: -1, piece: null as Built | null, foot: null as FootRec | null, sit: false, bed: null as BedPlace | null, prompt: null as string | null };
 /** E held on a piece or a footprint building: it as a job, how far he is from it, how long, what a short press does. */
@@ -168,6 +183,9 @@ let longTimer: ReturnType<typeof setTimeout> | null = null;
 let longFired = false;
 /** His land's edge on the ground (while he builds). */
 let edge: PlotEdge | null = null;
+/** His land as one map (_buildLand.ts): the rules' squares, the cord's runs, the red squares (`landView`). */
+let land: LandMap | null = null;
+let landView: LandView | null = null;
 /** A check's `plotedge=1`: shown without building. */
 let edgeHeld = false;
 
@@ -554,6 +572,55 @@ function shownDeg(id: PieceId, yaw: number): number {
 }
 
 /** Build mode's spot and prompt now (once a step). */
+/** A fence run this near his land's edge (m, its middle to the line) and this close to along it (rad) snaps onto it. */
+const EDGE_SNAP = { m: 0.55, turn: (15 * Math.PI) / 180, fallback: 1.2 };
+/**
+ * A fence run near a side of his land (build/plot.ts `PLOT_CORNERS`, the cord he sees while he builds) and turned
+ * along it: just inside the side, its outer face on the cord (no gap left, and on the upper side where the edge
+ * follows a step of the land), turned exactly along it, kept within the side's length. True: snapped (into `spot`).
+ */
+function snapEdge(reach: number = EDGE_SNAP.m): boolean {
+  const hw = (spot.len ?? PIECES.fence.w) / 2;
+  const hd = PIECES.fence.d / 2;
+  // (the run's direction: local x along (cos yaw, −sin yaw))
+  const dx = Math.cos(spot.yaw);
+  const dz = -Math.sin(spot.yaw);
+  let best = reach;
+  let hit: { x: number; z: number; yaw: number; len: number | undefined } | null = null;
+  for (const run of land?.runs() ?? []) {
+    const ax = run.x0;
+    const az = run.z0;
+    const bx = run.x1;
+    const bz = run.z1;
+    const len = Math.hypot(bx - ax, bz - az);
+    const ux = (bx - ax) / len;
+    const uz = (bz - az) / len;
+    // (along it, either way round)
+    const along = Math.abs(dx * ux + dz * uz);
+    if (along < Math.cos(EDGE_SNAP.turn)) continue;
+    const t = (spot.x - ax) * ux + (spot.z - az) * uz;
+    const off = Math.abs((spot.x - ax) * -uz + (spot.z - az) * ux);
+    if (off >= best || t < -hw || t > len + hw) continue;
+    const tt = len >= hw * 2 ? Math.min(len - hw, Math.max(hw, t)) : len / 2;
+    // (a side shorter than a run: a new one as long as the side, as a run that closes a gap; one he moves keeps its own)
+    const fit = len < hw * 2 && !moving && len >= FENCE_RUN.min ? len : spot.len;
+    const yaw = Math.atan2(-uz, ux);
+    // (the way round nearer the one he had: its front stays his)
+    const flip = dx * ux + dz * uz < 0;
+    // (just inside: the run's side where a fence fits)
+    const px = ax + ux * tt;
+    const pz = az + uz * tt;
+    best = off;
+    hit = { x: px + run.inX * hd, z: pz + run.inZ * hd, yaw: flip ? yaw + Math.PI : yaw, len: fit };
+  }
+  if (!hit) return false;
+  spot.x = hit.x;
+  spot.z = hit.z;
+  spot.len = hit.len;
+  spot.yaw = Math.atan2(Math.sin(hit.yaw), Math.cos(hit.yaw));
+  return true;
+}
+
 function placingNow(ctx: RoamCtx): void {
   if (spot.step === stepN || !placing || !env) return;
   spot.step = stepN;
@@ -566,9 +633,20 @@ function placingNow(ctx: RoamCtx): void {
   const furn = isFurniture(placing);
   spot.x = onGrid(b.pos.x + Math.sin(b.yaw) * ahead, PLOT_BOX.x0, furn ? FURN_GRID : GRID);
   spot.z = onGrid(b.pos.z + Math.cos(b.yaw) * ahead, PLOT_BOX.z0, furn ? FURN_GRID : GRID);
+  // (dragged: under the pointer where he grabbed it, turned as it stood and by , and .)
+  const dragged = !!drag && !!moving;
+  if (dragged) {
+    spot.yaw = Math.atan2(Math.sin(moving!.yaw + turn), Math.cos(moving!.yaw + turn));
+    const g = dragGround ?? [moving!.x - drag!.offX, moving!.z - drag!.offZ];
+    spot.x = onGrid(g[0] + drag!.offX, PLOT_BOX.x0, furn ? FURN_GRID : GRID);
+    spot.z = onGrid(g[1] + drag!.offZ, PLOT_BOX.z0, furn ? FURN_GRID : GRID);
+  }
   // (a run he moves keeps its own length unless it snaps to fill a gap)
   spot.len = moving?.len;
-  spot.snapped = placing === 'fence' && snapFence(raw);
+  const free = { x: spot.x, z: spot.z, yaw: spot.yaw, len: spot.len };
+  spot.snapped = placing === 'fence' && snapFence(dragged ? spot.yaw : raw);
+  // (a fence near his land's edge and along it: on the edge's line)
+  spot.edge = placing === 'fence' && !spot.snapped && snapEdge();
   spot.ceil = Infinity;
   let r: FurnReason | null;
   if (isFurniture(placing)) {
@@ -580,6 +658,21 @@ function placingNow(ctx: RoamCtx): void {
     // (a fence run of its own length: one that closes a gap, or stops on another run's line)
     const P = PIECES[placing];
     r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw, moving, spot.len !== undefined ? { w: spot.len, d: P.d, h: P.h } : null);
+    // (joined end to end past his land's edge — a run going on from a fence that ends on the cord —: just inside the cord
+    // instead, if it fits there)
+    if (r && spot.snapped && (r === 'plot' || r === 'yard')) {
+      const was = { x: spot.x, z: spot.z, yaw: spot.yaw, len: spot.len };
+      Object.assign(spot, free);
+      // (as far as a fence end drew it from: `EDGE_SNAP.fallback`)
+      const e = snapEdge(EDGE_SNAP.fallback);
+      const r2 = e ? canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw, moving, spot.len !== undefined ? { w: spot.len, d: P.d, h: P.h } : null) : r;
+      // (on the cord it stands, or says the cord's own reason — the ground, a tree —, not "past your land")
+      if (e) {
+        r = r2;
+        spot.snapped = false;
+        spot.edge = true;
+      } else Object.assign(spot, was);
+    }
     spot.y = ctx.world.field.heightAt(spot.x, spot.z);
   }
   spot.ok = !r;
@@ -594,7 +687,9 @@ function placingNow(ctx: RoamCtx): void {
   // has the turn's, F's and Esc's buttons: only E's here, or they would show twice)
   // (moving one: "E  Put it here 45°")
   const here = moving ? 'buildMoveHere' : 'buildHere';
-  if (!r) spot.prompt = onTouch() ? words(`heret|${here}|${deg}`, () => `E  ${t(here)} ${num(deg)}°`) : words(`here|${here}|${id}|${deg}`, () => `E  ${t(here)} ${num(deg)}°  ·  ${keys}`);
+  // (dragged: no E; he lets go)
+  if (!r && dragged) spot.prompt = onTouch() ? words('dragt', () => t('dragHere')) : words(`drag|${esc}`, () => `${t('dragHere')}  ·  ${keys}`);
+  else if (!r) spot.prompt = onTouch() ? words(`heret|${here}|${deg}`, () => `E  ${t(here)} ${num(deg)}°`) : words(`here|${here}|${id}|${deg}`, () => `E  ${t(here)} ${num(deg)}°  ·  ${keys}`);
   else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(reasonWord(r)));
   else spot.prompt = words(`not|${r}`, () => `${t(reasonWord(r))}  ·  ${keys}`);
   // (and by the touch bar's ⟲ ⟳, red or green)
@@ -674,6 +769,15 @@ function pickUp(ctx: RoamCtx, b: Built): void {
   console.info(`[build] ${b.uid} picked up to move`);
 }
 
+/** A footprint building picked up in move mode: footprint mode carrying it (it stays where it is until put down). */
+function carryFoot(ctx: RoamCtx, rec: FootRec): void {
+  if (!env || whyNotFoot(rec) || !FOOTS.list.includes(rec)) return;
+  lastCtx = ctx;
+  enterFoot(rec.kind, rec);
+  env.uiSound('select');
+  console.info(`[build] ${rec.uid} picked up to move`);
+}
+
 /** Done carrying (put down, or Esc: put back): move mode again, for the next. */
 function backToMove(): void {
   exitPlacing();
@@ -690,7 +794,7 @@ function exitPlacing(): void {
 }
 
 /** Footprint mode (AWP-20: _buildFoot.ts) for a kind: build mode's camera and touch bar, its own E, keys and ghost. */
-function enterFoot(kind: FootKind): void {
+function enterFoot(kind: FootKind, carry: FootRec | null = null): void {
   if (!FootMode.on) {
     if (!placing) modeTurned = 0;
     modeCamLetGo = false;
@@ -698,7 +802,8 @@ function enterFoot(kind: FootKind): void {
   }
   exitPlacing();
   MoveMode.exit();
-  FootMode.enter(kind);
+  if (carry) FootMode.carry(carry);
+  else FootMode.enter(kind);
   showTouchBar(true);
 }
 
@@ -710,11 +815,26 @@ function exitFoot(): void {
 
 /** Esc (the pad's ○, the touch ✕) in footprint mode: the first corner again, else out of it. */
 function backFoot(): void {
-  if (!FootMode.back()) showTouchBar(false);
+  // (dragging one: put back, out of the drag)
+  if (drag) return endDragMode();
+  // (carrying one he moves: put back, move mode goes on)
+  const carried = !!FootMode.carrying;
+  if (FootMode.back()) return;
+  if (carried) MoveMode.enter();
+  showTouchBar(carried);
 }
 
 /** E (or a click) in footprint mode: the first corner, or "Build here" and his work on it. */
 function useFoot(ctx: RoamCtx): void {
+  if (FootMode.carrying) {
+    // (carrying one he moves: put down there, at once and free; move mode goes on for the next)
+    FootMode.use(ctx, (c) => {
+      if (!FootMode.putDown(c)) return;
+      MoveMode.enter();
+      showTouchBar(true);
+    });
+    return;
+  }
   FootMode.use(ctx, (c) => {
     const rec = FootMode.buildHere(c);
     showTouchBar(FootMode.on);
@@ -726,6 +846,128 @@ function useFoot(ctx: RoamCtx): void {
 function modeTarget(): { x: number; z: number; reach: number; high: number } | null {
   if (placing) return { x: spot.x, z: spot.z, reach: Math.hypot(spot.len ?? PIECES[placing].w, PIECES[placing].d) / 2, high: 0 };
   return FootMode.on ? FootMode.target() : null;
+}
+
+/** The piece he moves, put down where the ghost is (`spot`), at once and free. */
+function putMoved(ctx: RoamCtx, m: Built): void {
+  BUILD.move(m, spot.x, spot.y, spot.z, spot.yaw, spot.len);
+  env?.uiSound('select');
+  ctx.hud.toast(t('buildMoved', { name: pieceWord(m) }));
+  console.info(`[build] ${m.uid} moved to (${m.x.toFixed(2)}, ${m.z.toFixed(2)}) yaw ${((m.yaw * 180) / Math.PI).toFixed(0)}°${m.len !== undefined ? ` ${m.len.toFixed(2)} m` : ''}`);
+}
+
+// ── Press and drag (dragGrab.ts) ────────────────────────────────────────────
+
+/** He may grab a thing of his now: on foot by his land, nothing else holding him, no mode of the build's but move mode. */
+function canGrab(ctx: RoamCtx): boolean {
+  if (!env || lastMode !== 'walk' || env.busy() || BuildWork.active || card?.open || ask?.open || pressing || drag) return false;
+  if (placing || FootMode.on || PAINT_LINK.on) return false;
+  const p = ctx.body.pos;
+  return pastPlot(p.x, p.z) <= MODE_FAR;
+}
+
+/** Out of the drag: nothing carried any more (what was not put down stays where it was). */
+function endDragMode(): void {
+  drag = null;
+  dragGround = null;
+  if (FootMode.carrying) exitFoot();
+  exitPlacing();
+  showTouchBar(false);
+}
+
+const dragGrab = {
+  can(x: number, y: number): boolean {
+    const ctx = lastCtx;
+    return !!ctx && canGrab(ctx) && !!grabAt(ctx, x, y);
+  },
+  start(x: number, y: number): boolean {
+    const ctx = lastCtx;
+    if (!env || !ctx || !canGrab(ctx)) return false;
+    const g = grabAt(ctx, x, y);
+    if (!g) return false;
+    if (g.why) {
+      ctx.hud.toast(t(g.why, { name: g.name }));
+      env.uiSound('tick');
+      return false;
+    }
+    const hit = landHit(ctx.cam.camera, x, y);
+    MoveMode.exit();
+    MoveMode.hover(null);
+    if (g.piece) {
+      const b = g.piece;
+      drag = { foot: false, offX: hit ? b.x - hit[0] : 0, offZ: hit ? b.z - hit[1] : 0 };
+      dragGround = hit;
+      enterPlacing(b.id, b);
+      turn = 0;
+      spot.step = -1;
+    } else {
+      const r = g.foot!;
+      const cx = (cellMin(r.rect.i0) + cellMin(r.rect.i1 + 1)) / 2;
+      const cz = (cellMin(r.rect.k0) + cellMin(r.rect.k1 + 1)) / 2;
+      drag = { foot: true, offX: hit ? cx - hit[0] : 0, offZ: hit ? cz - hit[1] : 0 };
+      dragGround = hit;
+      enterFoot(r.kind, r);
+      FootMode.dragging = true;
+      FootMode.holdCarry(cx, cz, null);
+    }
+    showTip(null);
+    env.uiSound('select');
+    console.info(`[build] ${(g.piece ?? g.foot)!.uid} grabbed to drag`);
+    return true;
+  },
+  end(drop: boolean): void {
+    const d = drag;
+    const ctx = lastCtx;
+    if (!d || !env || !ctx) return endDragMode();
+    if (d.foot) {
+      if (FootMode.carrying && drop) {
+        FootMode.refresh(ctx);
+        if (!FootMode.putDown(ctx)) {
+          const why = FootMode.prompt?.split('  ·  ')[0];
+          if (why) ctx.hud.toast(why);
+          env.uiSound('tick');
+        }
+      }
+      return endDragMode();
+    }
+    if (placing && moving && drop) {
+      spot.step = -1;
+      placingNow(ctx);
+      if (spot.ok && BUILD.list.includes(moving) && !whyNot(moving)) putMoved(ctx, moving);
+      else {
+        if (spot.reason) ctx.hud.toast(t(reasonWord(spot.reason)));
+        env.uiSound('tick');
+      }
+    }
+    turn = 0;
+    endDragMode();
+  },
+};
+
+/** The words by the mouse over a thing he can grab: "Hold and drag to move it", or why not. */
+let tip: HTMLElement | null = null;
+let tipSaid = '';
+function showTip(h: Grabbed | null, at?: { x: number; y: number }): void {
+  if (typeof document === 'undefined' || !env) return;
+  if (!h || !at) {
+    if (tip) tip.style.display = 'none';
+    return;
+  }
+  if (!tip) {
+    injectStyle();
+    tip = document.createElement('div');
+    tip.className = 'bd-grab-tip';
+    document.body.append(tip);
+  }
+  const s = h.why ? t(h.why, { name: h.name }) : t('dragTip');
+  if (s !== tipSaid) {
+    tipSaid = s;
+    tip.textContent = s;
+  }
+  tip.classList.toggle('is-no', !!h.why);
+  tip.style.display = 'block';
+  tip.style.left = `${at.x + 16}px`;
+  tip.style.top = `${at.y + 18}px`;
 }
 
 /** E in build mode: pay, and he builds it. */
@@ -742,12 +984,10 @@ function buildHere(ctx: RoamCtx): void {
       ctx.hud.toast(t(why, { name: pieceWord(m) }));
       return backToMove();
     }
-    BUILD.move(m, spot.x, spot.y, spot.z, spot.yaw, spot.len);
-    env.uiSound('select');
-    ctx.hud.toast(t('buildMoved', { name: pieceWord(m) }));
-    console.info(`[build] ${m.uid} moved to (${m.x.toFixed(2)}, ${m.z.toFixed(2)}) yaw ${((m.yaw * 180) / Math.PI).toFixed(0)}°${m.len !== undefined ? ` ${m.len.toFixed(2)} m` : ''}`);
+    putMoved(ctx, m);
     turn = 0;
-    backToMove();
+    if (drag) endDragMode();
+    else backToMove();
     return;
   }
   const id = placing;
@@ -955,7 +1195,8 @@ function showTouchBar(on: boolean): void {
       }
       // (carrying one he moves: ✕ puts it back, move mode goes on)
       if (d === 'done') {
-        if (moving) backToMove();
+        if (drag) endDragMode();
+        else if (moving) backToMove();
         else exitPlacing();
       } else if (d === 'left') turnBy(1);
       else if (d === 'right') turnBy(-1);
@@ -977,7 +1218,7 @@ function barWords(): void {
   if (!touchBar) return;
   // (move mode: nothing to turn until he picks one up)
   touchBar.classList.toggle('is-pick', MoveMode.on);
-  const done = FootMode.on && FootMode.stretching ? t('footAgain') : placing && moving ? t('movePutBack') : t('buildExit');
+  const done = FootMode.carrying || (placing && moving) ? t('movePutBack') : FootMode.on && FootMode.stretching ? t('footAgain') : t('buildExit');
   const key = `${lang()}|${done}`;
   if (key === barSaid) return;
   barSaid = key;
@@ -998,6 +1239,10 @@ function injectStyle(): void {
   styled = true;
   const st = document.createElement('style');
   st.textContent = `
+    .bd-grab-tip { position: fixed; z-index: 7; pointer-events: none; display: none; padding: 4px 9px 5px; border-radius: 4px; white-space: nowrap;
+      background: rgba(14, 20, 30, 0.86); box-shadow: 0 0 0 1px rgba(255, 216, 120, 0.55); color: #ffe2a0; font: 600 13px / 1.3 var(--mu-display); }
+    .bd-grab-tip.is-no { color: #ffb4a0; box-shadow: 0 0 0 1px rgba(255, 150, 120, 0.5); }
+    :lang(km) .bd-grab-tip { font-size: 14px; line-height: 1.45; }
     .bd-bar { position: absolute; left: 50%; bottom: calc(206px + 4vh); transform: translateX(-50%); display: none; gap: 8px; z-index: 6; pointer-events: auto; }
     body.roam-touch:not(.pad-on) .bd-bar.is-on { display: flex; }
     .bd-bar.is-pick [data-do="left"], .bd-bar.is-pick [data-do="right"], .bd-bar.is-pick .bd-tb-deg { display: none; }
@@ -1349,6 +1594,8 @@ registerAddon({
     // (paint mode, AWP-22: its F opens the card again; it ends when build mode starts)
     PAINT_LINK.card = () => void (lastCtx && openCard(lastCtx));
     PAINT_LINK.building = () => !!placing || FootMode.on || MoveMode.on;
+    // (press and drag a thing he built, from the mouse and the finger: dragGrab.ts)
+    DRAG_GRAB.by = dragGrab;
     view = createBuildView(e.shot);
     e.scene.add(view.object);
     // (footprint buildings, AWP-20: their plans need the land; a check's own, as `build=`)
@@ -1370,9 +1617,10 @@ registerAddon({
     });
     ghost = new BuildGhost(e.scene, e.world);
     // (move mode: a piece aimed at and picked up is build mode with it)
-    MoveMode.init(e, e.scene, (ctx, b) => pickUp(ctx, b));
-    edge = createPlotEdge(e.world.field, () => (graphicsNow.plainBlocks ? 'low' : 'medium'));
-    e.scene.add(edge.object);
+    MoveMode.init(e, e.scene, (ctx, b, foot) => (foot ? carryFoot(ctx, foot) : b && pickUp(ctx, b)));
+    // (his land's map: made in idle slices from the first frames (`frame`); the cord from it when first shown)
+    land = landMapOf(e.world);
+    landView = new LandView(e.scene, e.world, land);
     BuildWork.init(e);
     // (the card's riel and greyed rows as his purse changes while it is up)
     e.purse.onChange(() => card?.refresh());
@@ -1398,8 +1646,8 @@ registerAddon({
           state: () => ({
             pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3), ...(p.len !== undefined ? { len: +p.len.toFixed(3) } : {}) })),
             version: BUILT.version,
-            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, moving: moving?.uid ?? null, len: spot.len !== undefined ? +spot.len.toFixed(3) : null, ghost: !!ghost?.shown } : null,
-            moveMode: MoveMode.on ? { aimed: MoveMode.aimed.piece?.uid ?? null, why: MoveMode.aimed.why } : null,
+            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, edge: spot.edge, moving: moving?.uid ?? null, len: spot.len !== undefined ? +spot.len.toFixed(3) : null, ghost: !!ghost?.shown } : null,
+            moveMode: MoveMode.on ? { aimed: MoveMode.aimed.piece?.uid ?? (MoveMode.aimed.foot ? `foot:${MoveMode.aimed.foot.uid}` : null), why: MoveMode.aimed.why } : null,
             near: near.piece || near.foot ? { uid: (near.piece ?? near.foot)!.uid, prompt: near.prompt, sit: near.sit } : null,
             work: BuildWork.now,
             card: !!card?.open,
@@ -1407,7 +1655,7 @@ registerAddon({
             pressing: pressing ? { uid: pressing.job.uid, t: +pressing.t.toFixed(2) } : null,
             foot: FootMode.state(),
             riel: env?.purse.riel ?? 0,
-            plot: { area: +PLOT_AREA.toFixed(0), corners: PLOT_CORNERS.length, budget: PLOT_BUDGET, used: plotBlocks(), by: plotBlocksBy(), edge: !!edge?.shown, edgeBlocks: edge?.blocks ?? 0 },
+            plot: { area: +PLOT_AREA.toFixed(0), corners: PLOT_CORNERS.length, budget: PLOT_BUDGET, used: plotBlocks(), by: plotBlocksBy(), edge: !!edge?.shown, edgeBlocks: edge?.blocks ?? 0, land: land ? { ready: land.ready, ...land.size, runs: land.ready ? land.runs().length : 0, red: landView?.rows ?? 0, freePiece: land.ready ? land.free('piece') : 0, freeFence: land.ready ? land.free('fence') : 0 } : null },
             materials: { bag: BAG.all(), store: STORE.all() },
             owned: HOME.owned,
             view: view?.stats() ?? null,
@@ -1415,7 +1663,9 @@ registerAddon({
             saving: progress.saving,
             busy: env?.busy() ?? null,
           }),
-          canBuild: (id: PieceId, x: number, z: number, yawDeg = 0) => (lastCtx ? canBuild(lastCtx.world, id, x, z, (yawDeg * Math.PI) / 180) : 'no ctx'),
+          // (`len`: a fence run of its own length)
+          canBuild: (id: PieceId, x: number, z: number, yawDeg = 0, len?: number) =>
+            lastCtx ? canBuild(lastCtx.world, id, x, z, (yawDeg * Math.PI) / 180, null, len !== undefined ? { w: len, d: PIECES[id].d, h: PIECES[id].h } : null) : 'no ctx',
           add: (id: PieceId, x: number, z: number, yawDeg = 0, done = 1) => BUILD.add(id, x, env!.world.field.heightAt(x, z), z, (yawDeg * Math.PI) / 180, done)?.uid ?? null,
           remove: (uid: string) => {
             const p = BUILD.byUid(uid);
@@ -1432,6 +1682,16 @@ registerAddon({
             const why = whyNot(p);
             if (why) return why;
             pickUp(lastCtx, p);
+            return null;
+          },
+          // (a footprint building by its uid, as E on it would)
+          moveFoot: (uid: string) => {
+            const r = FOOTS.byUid(uid);
+            if (!r || !lastCtx) return 'no building';
+            if (!MoveMode.on) enterMove();
+            const why = whyNotFoot(r);
+            if (why) return why;
+            carryFoot(lastCtx, r);
             return null;
           },
           all: () => placeAll(),
@@ -1462,6 +1722,7 @@ registerAddon({
   },
   input(ctx, m, tap, dt) {
     lastCtx = ctx;
+    lastMode = m;
     stepN++;
     FootMode.nextStep();
     MoveMode.nextStep();
@@ -1493,7 +1754,8 @@ registerAddon({
       if (i.exit) {
         i.exit = false;
         env?.uiSound('close');
-        if (moving) backToMove();
+        if (drag) endDragMode();
+        else if (moving) backToMove();
         else exitPlacing();
         return false;
       }
@@ -1622,12 +1884,30 @@ registerAddon({
   },
   after(ctx, m, dt) {
     lastCtx = ctx;
+    lastMode = m;
     BuildWork.after(ctx, dt);
     // (the ghost's spot first: the camera's move starts toward where the ghost is now, not where it was)
     const free = m === 'walk' && !BuildWork.active && !card?.open && !!env && !env.busy();
+    // Press and drag: the ground under the pointer (what he holds follows it); the thing under the mouse, gold.
+    if (drag) {
+      if (!placing && !FootMode.carrying) endDragMode();
+      else {
+        dragGround = landHit(ctx.cam.camera, DRAG_GRAB.at.x, DRAG_GRAB.at.y) ?? dragGround;
+        if (drag.foot && dragGround) FootMode.holdCarry(dragGround[0] + drag.offX, dragGround[1] + drag.offZ, null);
+      }
+    }
+    const ptr = ctx.input.pointer;
+    const hv = !drag && free && ptr && !pad.active && !onTouch() && !DRAG_GRAB.active && canGrab(ctx) ? grabAt(ctx, ptr.x, ptr.y) : null;
+    MoveMode.hover(hv);
+    showTip(hv, ptr ?? undefined);
+    if (env && hv !== hovered) {
+      if (!!hv !== !!hovered) env.canvas.style.cursor = hv ? 'pointer' : 'grab';
+      hovered = hv;
+    }
     if (placing && free) placingNow(ctx);
     if (FootMode.on && free) FootMode.step(ctx);
-    if (m === 'walk' && !BuildWork.active) modeCamera(ctx, (!!placing || FootMode.on) && !card?.open, dt);
+    // (dragging: the camera holds still, so the ground under the pointer does not slide away)
+    if (m === 'walk' && !BuildWork.active && !drag) modeCamera(ctx, (!!placing || FootMode.on) && !card?.open, dt);
     // Move mode: the piece aimed at, highlighted; the gold ring.
     if (MoveMode.on && free) MoveMode.step(ctx);
     MoveMode.show(free && !card?.open);
@@ -1664,8 +1944,18 @@ registerAddon({
     if (!view) return;
     view.frame(f.camera, f.t, f.dt, f.night);
     // His land's edge while he builds (build mode, the card), or a check's `plotedge=1`.
-    edge?.show(!!placing || FootMode.on || MoveMode.on || !!card?.open || edgeHeld);
+    if (land && !land.ready) land.step(2);
+    const showEdge = !!placing || FootMode.on || MoveMode.on || !!card?.open || edgeHeld;
+    // (the cord along the land map's outline: made the first time it shows)
+    if (showEdge && !edge && land && env) {
+      edge = createPlotEdge(env.world.field, () => (graphicsNow.plainBlocks ? 'low' : 'medium'), land.runs());
+      env.scene.add(edge.object);
+    }
+    edge?.show(showEdge);
     edge?.frame(f.dt > 0 ? f.dt : 0);
+    // (the red squares of what he places: a fence's, or a piece's for the rest)
+    landView?.show(showEdge ? (placing === 'fence' ? 'fence' : 'piece') : null);
+    landView?.frame(f.dt > 0 ? f.dt : 0);
     ghost?.frame(f.dt > 0 ? f.dt : 0);
     MoveMode.frame(f.dt > 0 ? f.dt : 0);
     FootMode.frame(f.dt > 0 ? f.dt : 0);
@@ -1678,6 +1968,10 @@ registerAddon({
     pressing = null;
     holdBar(null);
     BuildWork.stop(ctx, next === 'overview');
+    drag = null;
+    dragGround = null;
+    MoveMode.hover(null);
+    showTip(null);
     exitPlacing();
     exitMove();
     exitFoot();
@@ -1692,10 +1986,18 @@ registerAddon({
     // (move mode: `buildmove=1` on, `buildmove=<uid>` that piece picked up)
     const mv = q.get('buildmove');
     if (mv) {
-      const piece = mv === '1' ? null : BUILD.byUid(mv);
-      if (mv !== '1' && !piece) console.warn(`[build] buildmove=: no piece "${mv}" (${BUILD.list.map((p) => p.uid).join(', ')})`);
+      // (`foot:<uid>[@x/z[/door]]`: a footprint building, held with its middle there)
+      const fm = /^foot:([a-z]+-\d+)(?:@(-?[\d.]+)\/(-?[\d.]+)(?:\/([0-3]))?)?$/.exec(mv);
+      const rec = fm ? FOOTS.byUid(fm[1]) : null;
+      const piece = mv === '1' || fm ? null : BUILD.byUid(mv);
+      if (fm && !rec) console.warn(`[build] buildmove=: no footprint building "${fm[1]}" (${FOOTS.list.map((r) => r.uid).join(', ')})`);
+      else if (!fm && mv !== '1' && !piece) console.warn(`[build] buildmove=: no piece "${mv}" (${BUILD.list.map((p) => p.uid).join(', ')})`);
       enterMove();
       if (piece) pickUp(ctx, piece);
+      if (rec) {
+        carryFoot(ctx, rec);
+        if (fm![2] !== undefined) FootMode.holdCarry(Number(fm![2]), Number(fm![3]), fm![4] === undefined ? null : (Number(fm![4]) as FootSide));
+      }
     }
     const g = q.get('buildghost');
     if (g) {
@@ -1788,7 +2090,12 @@ registerAddon({
     if (b) out.build = b;
     const fr = furnReport();
     if (fr) out.furn = fr;
-    if (placing && moving) out.buildmove = moving.uid;
+    const fc = FootMode.carrying;
+    if (fc) {
+      const st = FootMode.state();
+      const r = st.rect;
+      out.buildmove = r ? `foot:${fc.uid}@${((r.i0 + r.i1 + 1) * 0.25).toFixed(2)}/${((r.k0 + r.k1 + 1) * 0.25).toFixed(2)}/${st.door}` : `foot:${fc.uid}`;
+    } else if (placing && moving) out.buildmove = moving.uid;
     else if (placing) out.buildghost = `${placing}:${((turn * 180) / Math.PI).toFixed(0)}`;
     else if (MoveMode.on) out.buildmove = '1';
     const w = BuildWork.now;

@@ -46,19 +46,29 @@ export interface FootRec {
   /** Unique (`<kind>-<n>`), kept with it. */
   readonly uid: string;
   readonly kind: FootKind;
-  readonly rect: FootRect;
-  readonly door: FootSide;
+  /** Its footprint and door side (moved: `FOOTS.move`). */
+  rect: FootRect;
+  door: FootSide;
   /** 0‥1 built. */
   done: number;
   /** Its plan's first blocks in the layer. */
   written: number;
   /** What it cost (the materials; what he lacked he bought). */
   readonly cost: Materials;
-  /** The plan it was built with (footPlan.ts `PLAN_VERSION`; 1 for a record saved before versions were kept). */
-  readonly pv: number;
+  /** The plan it was built with (footPlan.ts `PLAN_VERSION`; 1 for a record saved before versions were kept; moved: the newest). */
+  pv: number;
 }
 
-export type FootEventType = 'added' | 'progress' | 'done' | 'removed';
+export type FootEventType = 'added' | 'progress' | 'done' | 'removed' | 'moved';
+
+/**
+ * What a move keeps of the blocks (roam/_buildFoot.ts: the paint, build/paint.ts `paintTake` / `paintGive`): read off
+ * the old plan's blocks before they go, given to the new plan's once they stand (in the same change of the layer).
+ */
+export interface FootKeep<T> {
+  take(plan: FootPlan, written: number): T;
+  give(plan: FootPlan, kept: T): void;
+}
 
 const KEY = 'build.foot';
 const SAVE_EVERY = 1;
@@ -75,6 +85,8 @@ let ground: ((x: number, z: number) => number) | null = null;
 let pending = false;
 let since = 0;
 const plans = new Map<string, { key: string; plan: FootPlan }>();
+/** The one he carries in move mode (`FOOTS.skip`): its own land does not count against where it goes. */
+let skip: FootRec | null = null;
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -201,7 +213,7 @@ function overFeet(p: FootPart, m: number, ignore: FootRec | null): boolean {
   return feetOver(f, m, ignore);
 }
 /** Would footprint `f` (grown by `m`) stand in a record's land? */
-function feetOver(f: Foot, m: number, ignore: FootRec | null = null): boolean {
+function feetOver(f: Foot, m: number, ignore: FootRec | null = skip): boolean {
   for (const r of list) {
     if (r === ignore) continue;
     for (const p of partsOf(r)) if (overlap(f, partFoot(p, _pf), m)) return true;
@@ -320,6 +332,37 @@ export const FOOTS = {
     emit('removed', rec);
   },
 
+  /**
+   * Moved (move mode, roam/_buildMove.ts; a finished one only): its blocks taken away and its plan at the new footprint
+   * and door side written whole, in one change of the layer; `keep` carries what was on them (the paint). Its cost is
+   * kept (taking it down later gives back half of it). Saved at once, blocks first, as a finished one. False: not moved.
+   */
+  move<T>(rec: FootRec, rect: FootRect, door: FootSide, keep?: FootKeep<T>): boolean {
+    if (!ground || !list.includes(rec) || rec.done < 1 || sizeFault(rec.kind, rect)) return false;
+    const old = planOf(rec);
+    const kept = keep?.take(old, rec.written);
+    BLOCKS.batch(() => {
+      for (let b = rec.written - 1; b >= 0; b--) BLOCKS.setRaw(old.cells[b * 3], old.cells[b * 3 + 1], old.cells[b * 3 + 2], 0);
+      rec.rect = rect;
+      rec.door = door;
+      rec.pv = PLAN_VERSION;
+      rec.written = 0;
+      const plan = planOf(rec);
+      writeTo(rec, plan.n);
+      if (keep) keep.give(plan, kept as T);
+    });
+    BUILT.version++;
+    saveBlocksNow();
+    save();
+    emit('moved', rec);
+    return true;
+  },
+
+  /** The one he carries in move mode (null: none): its own land is not counted where it may go (`BUILT.feetOver`). */
+  skip(rec: FootRec | null): void {
+    skip = rec;
+  },
+
   /** Each frame: what waits is saved once a second (or now). */
   tick(dt: number, now = false): void {
     if (!pending) return;
@@ -399,7 +442,7 @@ BUILT.feet = (x: number, z: number, r: number): boolean => {
   for (const rec of list) if (FOOTS.distTo(rec, x, z) < r) return true;
   return false;
 };
-BUILT.feetOver = (f: Foot, m: number): boolean => feetOver(f, m);
+BUILT.feetOver = (f: Foot, m: number): boolean => feetOver(f, m, skip);
 BUILT.feetRoom = (f: Foot, h: number): boolean => roomIn(f, h);
 
 const _rc: [number, number][] = [];

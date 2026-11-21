@@ -2,7 +2,7 @@ import type { Object3D } from 'three';
 import { BENCH_BACK } from '../../character/rest';
 import { BODY_UNIT_M } from '../../world/scale';
 import { BUILT, PIECES, pieceToWorld, type Built } from '../build/pieces';
-import { BUILD, distTo } from '../build/state';
+import { BUILD, distTo, toLocal } from '../build/state';
 import type { HeightField } from '../heightfield';
 import { ROAM_SCALE } from './types';
 import { addHammock, HAMMOCK_IN_USE, removeHammock } from './_hammockSpots';
@@ -43,6 +43,7 @@ let root: Object3D | null = null;
 const hammockIds = new Set<string>();
 const prayIds = new Set<string>();
 const _p: [number, number] = [0, 0];
+const _l: [number, number] = [0, 0];
 
 /** The seat piece he is at (feet at x, y, z), or null. */
 function seatAt(x: number, y: number, z: number): Built | null {
@@ -61,8 +62,11 @@ function seatAt(x: number, y: number, z: number): Built | null {
   return best;
 }
 
-/** Where he sits or lies on a seat piece (into `out`), its feet and his way. */
-function seatSpot(b: Built, kind: RestKind, out: RestSeat): boolean {
+/**
+ * Where he sits or lies on a seat piece (into `out`), its feet and his way; (x, z): where he stands (a bench with no
+ * back: the side he is on, the place along it).
+ */
+function seatSpot(b: Built, kind: RestKind, out: RestSeat, x: number, z: number): boolean {
   const seat = PIECES[b.id].seat!;
   if (kind === 'lie' && !seat.lie) return false;
   if (seat.lie) {
@@ -72,9 +76,13 @@ function seatSpot(b: Built, kind: RestKind, out: RestSeat): boolean {
     out.y = b.y + seat.y;
     out.bench = 0;
   } else {
-    // (a bench: his feet on the ground before it, facing out; he sits down onto it behind him)
-    pieceToWorld(b, seat.x, seat.z + BENCH_FEET, _p);
-    out.yaw = b.yaw + seat.yaw;
+    // (a bench: his feet on the ground before it, facing out; he sits down onto it behind him. One with no back:
+    // facing out from the side he is on, where he stands along it)
+    toLocal(b, x, z, _l);
+    const back = !!seat.both && _l[1] < seat.z;
+    const sx = seat.along ? Math.min(seat.along[1], Math.max(seat.along[0], _l[0])) : seat.x;
+    pieceToWorld(b, sx, seat.z + (back ? -BENCH_FEET : BENCH_FEET), _p);
+    out.yaw = b.yaw + seat.yaw + (back ? Math.PI : 0);
     out.y = b.y;
     out.bench = seat.y;
   }
@@ -89,7 +97,7 @@ export const BuildUses = {
     root = standing;
     REST_SEATS.find = (kind, x, y, z, out) => {
       const b = seatAt(x, y, z);
-      return !!b && seatSpot(b, kind, out);
+      return !!b && seatSpot(b, kind, out, x, z);
     };
     REST_SEATS.noLie = (x, y, z) => {
       const b = seatAt(x, y, z);

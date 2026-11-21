@@ -477,10 +477,23 @@ guide, with every add-on's keys and URL values for shots, is
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
     Fence runs join: a run fills the gap between two fence ends 0.3‥3 m apart, and stops on another
-    run's line at a corner (`snapFence` in `roam/_build.ts`; a run's own length `Built.len`).
+    run's line at a corner (`snapFence` in `roam/_build.ts`; a run's own length `Built.len`). Near his
+    land's edge and along it, a run lies just inside the edge, its face on the cord (`snapEdge`;
+    `_buildSpots.ts` `FENCE_EDGE`: a fence's middle may lie on the edge, by a path, 0.15 m from water;
+    only the ground along its middle must be level). His land is one map (`roam/_buildLand.ts`, made by
+    `_buildSpots.ts` `landMapOf`): 0.25 m squares with what stops a piece or a fence for good (water,
+    trail, past the land, the house, the bank stones); `canBuild` asks it, the cord is its outline
+    (build/plotEdge.ts with `runs`), and blocked squares show faint red while he builds
+    (`_buildLandView.ts`). Any change to the rules must keep every spot the old rules allowed.
   - Moving what he built: the card's "Move your things" row → move mode (`roam/_buildMove.ts`):
     aim at a piece (gold), E picks it up, its ghost goes with him, E puts it down free, Esc puts it
     back (`BUILD.move`, the `moved` event; `buildmove=1|<uid>`; addons.md "Moving what he built").
+    Footprint buildings (stilt house, shed, fence line) move too: carried in footprint mode
+    (`FootMode.carry`, `,` / `.` a quarter turn), put down with `FOOTS.move` (blocks rewritten,
+    paint kept: `paint.ts` `paintTake` / `paintGive`); `buildmove=foot:<uid>[@x/z[/door]]`.
+    Press and drag (the quick way): on his land the mouse over a thing he built glows gold; a press held
+    still 0.22 s (a finger 0.35 s) grabs it, the drag moves it, letting go puts it down; a press that moves
+    first turns the camera (`roam/dragGrab.ts`, shared by input.ts and touch.ts; `_build.ts` `dragGrab`).
   - Footprint buildings (AWP-20): on the build card, a stilt house, a shed or a fence
     line drawn as a rectangle (E a corner, E again "Build here"; the mouse points, a tap
     puts the cursor): posts, floor, walls, roof and stair fit by themselves, written into

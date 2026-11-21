@@ -49,8 +49,23 @@ export interface PlotEdge {
   frame(dt: number): void;
 }
 
-/** `quality`: the blocks' cut now (graphics.ts: plain on the low level); its meshes are made again when it changes. */
-export function createPlotEdge(field: HeightField, quality: () => 'low' | 'medium'): PlotEdge {
+/** A side of the cord: from (x0, z0) to (x1, z1). */
+export interface EdgeSide {
+  readonly x0: number;
+  readonly z0: number;
+  readonly x1: number;
+  readonly z1: number;
+  /** The side his land is on (−1, 0, 1 along x and z): the cord's ground is read there, on the upper step. */
+  readonly inX?: number;
+  readonly inZ?: number;
+}
+
+/**
+ * `quality`: the blocks' cut now (graphics.ts: plain on the low level); its meshes are made again when it changes.
+ * `sides`: the cord's straight runs (roam/_buildLand.ts: the land map's outline, where a fence fits); none: his land's
+ * corners (`PLOT_CORNERS`) as before.
+ */
+export function createPlotEdge(field: HeightField, quality: () => 'low' | 'medium', sides?: readonly EdgeSide[]): PlotEdge {
   const b = new VoxelBuilder();
   const ground = (x: number, z: number) => field.heightAt(x, z);
   // (nothing on the trail or in the stream that run through his land: the edge stops at their sides)
@@ -61,9 +76,24 @@ export function createPlotEdge(field: HeightField, quality: () => 'low' | 'mediu
     return s !== SURFACE.path && s !== SURFACE.pad && s !== SURFACE.sand && s !== SURFACE.bed;
   };
   const n = PLOT_CORNERS.length;
-  // The corner posts with their cloth.
-  for (const [x, z] of PLOT_CORNERS) {
-    if (!open(x, z)) continue;
+  const list: readonly EdgeSide[] =
+    sides ??
+    PLOT_CORNERS.map(([x0, z0], i) => {
+      const [x1, z1] = PLOT_CORNERS[(i + 1) % n];
+      return { x0, z0, x1, z1 };
+    });
+  // The corner posts with their cloth: at each side's ends (once where two meet).
+  const posts = new Map<string, [number, number]>();
+  for (const sd of list)
+    for (const [x, z] of [
+      [sd.x0, sd.z0],
+      [sd.x1, sd.z1],
+    ] as const)
+      posts.set(`${x.toFixed(2)},${z.toFixed(2)}`, [x, z]);
+  // (the land map's runs lie beside ground a fence takes: no trail or stream under them)
+  const given = !!sides;
+  for (const [x, z] of posts.values()) {
+    if (!given && !open(x, z)) continue;
     const g = ground(x, z);
     b.box(x, g + POST.h / 2 - 0.1, z, POST.w, POST.h + 0.2, POST.w, POST_C, 'mapBark');
     b.box(x, g + POST.h - POST.cloth, z, POST.w + 0.04, POST.clothH, POST.w + 0.04, KRAMA, 'petal');
@@ -71,18 +101,22 @@ export function createPlotEdge(field: HeightField, quality: () => 'low' | 'mediu
     b.box(x + POST.w / 2 + 0.02, g + POST.h - POST.cloth - 0.12, z, 0.02, 0.2, 0.06, KRAMA, 'petal');
   }
   // Each side: pegs between the corners, the cord from post to post.
-  for (let i = 0; i < n; i++) {
-    const [ax, az] = PLOT_CORNERS[i];
-    const [bx, bz] = PLOT_CORNERS[(i + 1) % n];
+  for (const sd of list) {
+    const ax = sd.x0;
+    const az = sd.z0;
+    const bx = sd.x1;
+    const bz = sd.z1;
     const len = Math.hypot(bx - ax, bz - az);
     const ry = Math.atan2(bx - ax, bz - az);
+    const ix = (sd.inX ?? 0) * 0.13;
+    const iz = (sd.inZ ?? 0) * 0.13;
     const pegs = Math.max(1, Math.ceil(len / PEG_EVERY));
     for (let k = 1; k < pegs; k++) {
       const u = k / pegs;
       const x = ax + (bx - ax) * u;
       const z = az + (bz - az) * u;
-      if (!open(x, z)) continue;
-      b.box(x, ground(x, z) + PEG.h / 2 - 0.1, z, PEG.w, PEG.h + 0.2, PEG.w, BAMBOO[k % 2], 'mapBark', { ry });
+      if (!given && !open(x, z)) continue;
+      b.box(x, ground(x + ix, z + iz) + PEG.h / 2 - 0.1, z, PEG.w, PEG.h + 0.2, PEG.w, BAMBOO[k % 2], 'mapBark', { ry });
     }
     const cords = Math.max(1, Math.ceil(len / CORD.step));
     const seg = len / cords;
@@ -91,8 +125,8 @@ export function createPlotEdge(field: HeightField, quality: () => 'low' | 'mediu
       const x = ax + (bx - ax) * u;
       const z = az + (bz - az) * u;
       // (along the side: its length along the block's local z, turned to the side's way)
-      if (!open(x, z)) continue;
-      const g = ground(x, z);
+      if (!given && !open(x, z)) continue;
+      const g = ground(x + ix, z + iz);
       b.box(x, g + CORD.y, z, CORD.t, CORD.t, seg + 0.02, CORD_C, 'mapBark', { ry });
       b.box(x, g, z, TROD.w, TROD.up * 2, seg + 0.02, TROD_C[k % 2], 'mapRock', { ry });
     }

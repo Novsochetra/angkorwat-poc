@@ -3,19 +3,20 @@ import type { WordKey } from '../ui/lang';
 import { SHOP_DELIVER, shopToWorld, shopYaw } from './_bikeShopPlan';
 
 /**
- * His own bicycle (bought at the morning market's bicycle shop: roam/_bikeShop.ts),
- * with no three.js: the kinds the shop sells, which one he has and where he
- * last left it. The bicycle add-on (roam/_bike.ts) draws and rides it, the
- * shop sells it, the maps (ui/_minimapSpots.ts) put "My bicycle" where it is.
+ * His own bicycles (bought at the morning market's bicycle shop: roam/_bikeShop.ts),
+ * with no three.js: the kinds the shop sells, which ones he has (one of each kind at
+ * most: he keeps every one he buys) and where he last left each. The bicycle add-on
+ * (roam/_bike.ts) draws and rides them, the shop sells them, the maps
+ * (ui/_minimapSpots.ts) put "My bicycle" where each is.
  *
- * Saved (map/progress.ts): `bike.own` (`{ kind, colour }`), `bike.ownAt`
- * (`{ x, z, yaw, y }`: where he got off it last, yaw in degrees, `y` the floor it
- * stands on: a terrace, a deck or a bridge over the land keeps it, where only `x, z`
- * stood it on the land under them, inside a terrace's stone; saves from before `y`
- * stand it on the land as before), so it stands there between visits and across Esc
- * back to the map; and how many he has
- * bought (`bike.bought`). Shots save nothing; a URL's `bikeown=` / `bikeownat=`
- * (`fromUrl`) sets them for that page alone.
+ * Saved (map/progress.ts): `bike.owned`, a list of `{ kind, colour, x, z, yaw, y }`
+ * (where he got off it last, yaw in degrees, `y` the floor it stands on: a terrace, a
+ * deck or a bridge over the land keeps it, where only `x, z` stood it on the land
+ * under them, inside a terrace's stone; saves from before `y` stand it on the land as
+ * before), so each stands there between visits and across Esc back to the map; and
+ * how many he has bought (`bike.bought`). Saves from when he had one bicycle
+ * (`bike.own`, `bike.ownAt`) are read into the list. Shots save nothing; a URL's
+ * `bikeown=` / `bikeownat=` (`fromUrl`) sets them for that page alone.
  *
  * Nothing per frame.
  */
@@ -50,47 +51,67 @@ const COLOUR_IDS: readonly string[] = ['black', 'sky', 'red'];
 export const isKind = (v: unknown): v is BikeKindId => typeof v === 'string' && KIND_IDS.includes(v);
 export const isColour = (v: unknown): v is BikeColourId => typeof v === 'string' && COLOUR_IDS.includes(v);
 
-/** Buying another, the one he has goes back to the shop for this share of its price (rounded to 1 000 ៛). */
-export const TRADE_IN = 0.5;
-export const tradeIn = (k: BikeKindId): number => Math.round((kindOf(k).price * TRADE_IN) / 1000) * 1000;
-
-/** What one of `kind` costs him now: its price, less the trade-in of the one he has (none: 0; the same: 0, he has it). */
+/** What one of `kind` costs him now: its price (one he has already: 0, it is his). He keeps every one he buys. */
 export function costFor(kind: BikeKindId): number {
-  if (BIKE_OWN.kind === kind) return 0;
-  return kindOf(kind).price - (BIKE_OWN.kind ? tradeIn(BIKE_OWN.kind) : 0);
+  return hasBike(kind) ? 0 : kindOf(kind).price;
 }
 
 /** Hiring one of the bicycles by Angkor Wat's road (riel, paid once a hire). */
 export const HIRE_PRICE = 2_000;
 
 /**
- * His bicycle now: its kind and colour (`kind` null: none), where it stands (m; `yaw` its heading, radians; `y` the
- * floor it was left on, NaN: not known, the bicycle add-on stands it on the ground there), whether
- * he is riding it (the maps' badge goes while he does: he is on it), and a count that goes up with every change (`n`:
- * the bicycle add-on and the maps redo theirs).
+ * One bicycle of his: its kind and colour, where it stands (m; `yaw` its heading, radians; `y` the floor it was left
+ * on, NaN: not known, the bicycle add-on stands it on the ground there), and whether he is riding it (the maps' badge
+ * goes while he does: he is on it).
+ */
+export interface OwnBike {
+  kind: BikeKindId;
+  colour: BikeColourId;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  riding: boolean;
+}
+
+/**
+ * His bicycles now (one of each kind at most, in the order bought: none, he has none), and a count that goes up with
+ * every change (`n`: the bicycle add-on and the maps redo theirs). He keeps every one he buys (no trade-in).
  */
 export const BIKE_OWN = {
-  kind: null as BikeKindId | null,
-  colour: 'black' as BikeColourId,
-  x: 0,
-  y: NaN,
-  z: 0,
-  yaw: 0,
-  riding: false,
+  bikes: [] as OwnBike[],
   n: 0,
 };
 
-/** He got on his bicycle (true) or off it (the bicycle add-on: roam/_bike.ts). */
-export function ridingBike(on: boolean): void {
-  if (BIKE_OWN.riding === on) return;
-  BIKE_OWN.riding = on;
+/** His bicycle of `kind`, or undefined. */
+export const ownBike = (kind: BikeKindId): OwnBike | undefined => BIKE_OWN.bikes.find((b) => b.kind === kind);
+export const hasBike = (kind: BikeKindId): boolean => ownBike(kind) !== undefined;
+/** He has at least one. */
+export const hasAnyBike = (): boolean => BIKE_OWN.bikes.length > 0;
+
+/** He got on his bicycle of `kind` (true) or off it (the bicycle add-on: roam/_bike.ts). */
+export function ridingBike(kind: BikeKindId, on: boolean): void {
+  const b = ownBike(kind);
+  if (!b || b.riding === on) return;
+  b.riding = on;
   BIKE_OWN.n++;
 }
 
-/** Its place before he first rides it: on its stand before the bicycle shop. */
-export function deliverySpot(): { x: number; z: number; yaw: number } {
-  const [x, z] = shopToWorld(SHOP_DELIVER.x, SHOP_DELIVER.z);
+/** The stand before the bicycle shop for the `i`-th bicycle there (side by side, a metre apart, out to the street). */
+function deliverySlot(i: number): { x: number; z: number; yaw: number } {
+  const [x, z] = shopToWorld(SHOP_DELIVER.x, SHOP_DELIVER.z + i * DELIVER_GAP);
   return { x, z, yaw: shopYaw(SHOP_DELIVER.turn) };
+}
+/** Between two bicycles delivered side by side (m). */
+const DELIVER_GAP = 1.0;
+
+/** Its place before he first rides it: on its stand before the bicycle shop (the first stand no bicycle of his is at). */
+export function deliverySpot(): { x: number; z: number; yaw: number } {
+  for (let i = 0; i < BIKE_KINDS.length; i++) {
+    const d = deliverySlot(i);
+    if (!BIKE_OWN.bikes.some((b) => !b.riding && Math.hypot(b.x - d.x, b.z - d.z) < 0.7)) return d;
+  }
+  return deliverySlot(0);
 }
 
 const listeners: (() => void)[] = [];
@@ -105,95 +126,119 @@ function changed(): void {
 
 /** A URL set it (`bikeown=`, `bikeownat=`): kept for this page alone, never saved over what the player has. */
 let fromUrl = false;
+/** The URL's values last applied (`bikeOwnFromUrl`). */
+let urlSaid = '';
 
 type Own = { kind: string; colour: string };
 type At = { x: number; z: number; yaw: number; y?: number };
+type Saved = Own & At;
 const isOwn = (v: unknown): v is Own => typeof v === 'object' && v !== null && isKind((v as Own).kind) && isColour((v as Own).colour);
 const isAt = (v: unknown): v is At =>
   typeof v === 'object' &&
   v !== null &&
   [(v as At).x, (v as At).z, (v as At).yaw].every((n) => typeof n === 'number' && Number.isFinite(n)) &&
   ((v as At).y === undefined || (typeof (v as At).y === 'number' && Number.isFinite((v as At).y)));
+const isSaved = (v: unknown): v is Saved[] => Array.isArray(v) && v.every((b) => isOwn(b) && isAt(b));
 
-/** The saved bicycle (once, at the start): what he has and where it stands. */
-function load(): void {
-  const own = progress.get<Own | null>('bike.own', null, (v): v is Own => isOwn(v));
-  if (!own) return;
-  BIKE_OWN.kind = own.kind as BikeKindId;
-  BIKE_OWN.colour = own.colour as BikeColourId;
-  const at = progress.get<At | null>('bike.ownAt', null, (v): v is At => isAt(v));
+/** One bicycle from what was saved (no place: before the shop). */
+function fromSave(own: Own, at: At | null): OwnBike {
   const d = deliverySpot();
-  BIKE_OWN.x = at ? at.x : d.x;
-  BIKE_OWN.z = at ? at.z : d.z;
-  BIKE_OWN.y = at?.y ?? NaN;
-  BIKE_OWN.yaw = at ? (at.yaw * Math.PI) / 180 : d.yaw;
+  return {
+    kind: own.kind as BikeKindId,
+    colour: own.colour as BikeColourId,
+    x: at ? at.x : d.x,
+    y: at?.y ?? NaN,
+    z: at ? at.z : d.z,
+    yaw: at ? (at.yaw * Math.PI) / 180 : d.yaw,
+    riding: false,
+  };
+}
+
+/**
+ * The saved bicycles (once, at the start): `bike.owned`, a list of `{ kind, colour, x, z, yaw, y? }` (yaw in degrees).
+ * Saves from before it had one bicycle (`bike.own`, `bike.ownAt`): that one.
+ */
+function load(): void {
+  const list = progress.get<Saved[] | null>('bike.owned', null, (v): v is Saved[] => isSaved(v));
+  if (list) {
+    for (const b of list) if (!hasBike(b.kind as BikeKindId)) BIKE_OWN.bikes.push(fromSave(b, b));
+  } else {
+    const own = progress.get<Own | null>('bike.own', null, (v): v is Own => isOwn(v));
+    if (!own) return;
+    const at = progress.get<At | null>('bike.ownAt', null, (v): v is At => isAt(v));
+    BIKE_OWN.bikes.push(fromSave(own, at));
+  }
   BIKE_OWN.n++;
 }
 load();
 
 function save(): void {
   if (fromUrl) return;
-  progress.set('bike.own', BIKE_OWN.kind ? { kind: BIKE_OWN.kind, colour: BIKE_OWN.colour } : null);
-  const at: { [k: string]: number } = { x: +BIKE_OWN.x.toFixed(2), z: +BIKE_OWN.z.toFixed(2), yaw: +((BIKE_OWN.yaw * 180) / Math.PI).toFixed(1) };
-  if (Number.isFinite(BIKE_OWN.y)) at.y = +BIKE_OWN.y.toFixed(2);
-  progress.set('bike.ownAt', BIKE_OWN.kind ? at : null);
+  const list = BIKE_OWN.bikes.map((b) => {
+    const o: { [k: string]: string | number } = { kind: b.kind, colour: b.colour, x: +b.x.toFixed(2), z: +b.z.toFixed(2), yaw: +((b.yaw * 180) / Math.PI).toFixed(1) };
+    if (Number.isFinite(b.y)) o.y = +b.y.toFixed(2);
+    return o;
+  });
+  progress.set('bike.owned', list.length ? list : null);
+  // (the old one-bicycle keys: read once, now in the list)
+  progress.set('bike.own', null);
+  progress.set('bike.ownAt', null);
 }
 
-/** He bought one of `kind`: it is his (the one he had traded in), on its stand before the shop. */
+/** He bought one of `kind`: it is his too (the ones he had stay his), on its stand before the shop. */
 export function buyBike(kind: BikeKindId): void {
-  BIKE_OWN.kind = kind;
-  BIKE_OWN.colour = kindOf(kind).colour;
+  if (hasBike(kind)) return;
   const d = deliverySpot();
-  BIKE_OWN.x = d.x;
-  BIKE_OWN.y = NaN;
-  BIKE_OWN.z = d.z;
-  BIKE_OWN.yaw = d.yaw;
+  BIKE_OWN.bikes.push({ kind, colour: kindOf(kind).colour, x: d.x, y: NaN, z: d.z, yaw: d.yaw, riding: false });
   progress.set('bike.bought', progress.get('bike.bought', 0) + 1);
   save();
   changed();
 }
 
-/** He got off it (or went back to the map on it): it stands there now, on the floor at `y` (saved; the add-on has it there already). */
-export function leaveBike(x: number, z: number, yaw: number, y = NaN): void {
-  BIKE_OWN.riding = false;
-  if (!BIKE_OWN.kind) return;
-  BIKE_OWN.x = x;
-  BIKE_OWN.y = y;
-  BIKE_OWN.z = z;
-  BIKE_OWN.yaw = yaw;
+/** He got off his bicycle of `kind` (or went back to the map on it): it stands there now, on the floor at `y` (saved; the add-on has it there already). */
+export function leaveBike(kind: BikeKindId, x: number, z: number, yaw: number, y = NaN): void {
+  const b = ownBike(kind);
+  if (!b) return;
+  b.riding = false;
+  b.x = x;
+  b.y = y;
+  b.z = z;
+  b.yaw = yaw;
   BIKE_OWN.n++;
   save();
 }
 
 /**
- * The URL's values (a check, a bug report's shot): `bikeown=<kind>[:<colour>]` (`0`: none) he has that bicycle,
- * `bikeownat=x:z:yaw°[:y]` it stands there, on the floor at `y` (else on the ground there; no place: before the shop).
- * Nothing is saved from them. True if they changed it.
+ * The URL's values (a check, a bug report's shot): `bikeown=<kind>[:<colour>][,<kind>[:<colour>]…]` (`0`: none) he has
+ * those bicycles, `bikeownat=x:z:yaw°[:y][,…]` they stand there, in the same order, on the floor at `y` (else on the
+ * ground there; no place: before the shop). Nothing is saved from them. True if they changed it.
  */
 export function bikeOwnFromUrl(q: URLSearchParams): boolean {
   if (!q.has('bikeown') && !q.has('bikeownat')) return false;
+  // (the same values again — the add-on's `init` and `fromUrl` both pass the page's — leave what happened since: a purchase)
+  const said = `${q.get('bikeown')}|${q.get('bikeownat')}`;
+  if (said === urlSaid) return false;
+  urlSaid = said;
   fromUrl = true;
   const spec = q.get('bikeown');
   if (spec !== null) {
-    const [k, c] = spec.split(':');
-    if (isKind(k)) {
-      BIKE_OWN.kind = k;
-      BIKE_OWN.colour = isColour(c) ? c : kindOf(k).colour;
-    } else BIKE_OWN.kind = null;
+    BIKE_OWN.bikes.length = 0;
+    for (const one of spec.split(',')) {
+      const [k, c] = one.split(':');
+      if (!isKind(k) || hasBike(k)) continue;
+      const d = deliverySpot();
+      BIKE_OWN.bikes.push({ kind: k, colour: isColour(c) ? c : kindOf(k).colour, x: d.x, y: NaN, z: d.z, yaw: d.yaw, riding: false });
+    }
   }
-  const at = (q.get('bikeownat') ?? '').split(':').map(Number);
-  const d = deliverySpot();
-  if (at.length >= 2 && at.slice(0, 2).every(Number.isFinite)) {
-    BIKE_OWN.x = at[0];
-    BIKE_OWN.z = at[1];
-    BIKE_OWN.yaw = Number.isFinite(at[2]) ? (at[2] * Math.PI) / 180 : d.yaw;
-    BIKE_OWN.y = Number.isFinite(at[3]) ? at[3] : NaN;
-  } else if (spec !== null) {
-    BIKE_OWN.x = d.x;
-    BIKE_OWN.y = NaN;
-    BIKE_OWN.z = d.z;
-    BIKE_OWN.yaw = d.yaw;
-  }
+  (q.get('bikeownat') ?? '').split(',').forEach((one, i) => {
+    const b = BIKE_OWN.bikes[i];
+    const at = one.split(':').map(Number);
+    if (!b || at.length < 2 || !at.slice(0, 2).every(Number.isFinite)) return;
+    b.x = at[0];
+    b.z = at[1];
+    if (Number.isFinite(at[2])) b.yaw = (at[2] * Math.PI) / 180;
+    b.y = Number.isFinite(at[3]) ? at[3] : NaN;
+  });
   changed();
   return true;
 }

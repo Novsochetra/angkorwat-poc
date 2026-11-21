@@ -1,8 +1,7 @@
 import { DirectionalLight, type Fog, Group, HemisphereLight, NeutralToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three';
 import { posthogLogger } from '../posthog';
-import { FeedbackTool } from '../feedback/FeedbackTool';
+import type { FeedbackTool } from '../feedback/FeedbackTool';
 import { skipBackFacets } from '../voxel/backFacets';
-import { installLookPanel } from '../voxel/LookPanel';
 import type { Atmosphere } from './atmosphere';
 import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
@@ -878,9 +877,11 @@ function momentQuery(q: URLSearchParams, t: number): URLSearchParams {
 // ── Tools: bug reports (B), block look panel (K) and the free camera (`) ───
 // (dev server only: reports are saved through it, and a deployed map shows no tools)
 const devTools = import.meta.env.DEV && !shot;
-const feedback = !devTools
-  ? null
-  : new FeedbackTool({
+// (loaded only here, so a build never downloads it)
+let feedback: FeedbackTool | null = null;
+if (devTools)
+  void import('../feedback/FeedbackTool').then(({ FeedbackTool }) => {
+    feedback = new FeedbackTool({
       renderer,
       scene,
       camera,
@@ -898,7 +899,12 @@ const feedback = !devTools
         return q;
       },
     });
-if (devTools) installLookPanel({ viewAt: () => ({ camera, rect: canvas.getBoundingClientRect() }), pickables: () => parts.map((p) => p.object), scene, renderer });
+  });
+// (loaded only here, so a build never downloads it)
+if (devTools)
+  void import('../voxel/LookPanel').then(({ installLookPanel }) =>
+    installLookPanel({ viewAt: () => ({ camera, rect: canvas.getBoundingClientRect() }), pickables: () => parts.map((p) => p.object), scene, renderer }),
+  );
 // The free camera (dev/freecam.ts; `wallpapers/`, `npm run wallpaper`): a camera that goes anywhere, for wallpapers and videos.
 if (devTools)
   void import('./dev/freecam').then(({ installFreeCam }) => {

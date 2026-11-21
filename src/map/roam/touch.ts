@@ -1,6 +1,7 @@
 import { pad } from '../pad/pad';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
+import { DRAG_GRAB, dropPending, endGrab, pressGrab, SLOP, type PendingGrab } from './dragGrab';
 
 /**
  * Touch controls while roaming (phones, tablets): a joystick for the left
@@ -74,6 +75,8 @@ export class TouchControls {
   /** Look fingers: last point per pointer. */
   private readonly fingers = new Map<number, { x: number; y: number }>();
   private pinch = 0;
+  /** A finger on a thing he built: waiting to grab it (held still), or holding it (dragGrab.ts); its pointer id. */
+  private grab: { id: number; pending: PendingGrab | null; on: boolean } | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     injectStyle();
@@ -184,6 +187,21 @@ export class TouchControls {
         this.moveStick(e.clientX, e.clientY);
         return;
       }
+      // (a second finger: a pinch, not a grab; one finger on a thing of his and held still: a grab)
+      if (this.grab && !this.grab.on) {
+        dropPending(this.grab.pending);
+        this.grab = null;
+      }
+      if (!this.fingers.size && !this.grab && !this.shutter) {
+        const g: NonNullable<TouchControls['grab']> = { id: e.pointerId, pending: null, on: false };
+        g.pending = pressGrab(e.clientX, e.clientY, 'touch', (ok) => {
+          if (this.grab !== g) return;
+          g.pending = null;
+          if (ok) g.on = true;
+          else this.grab = null;
+        });
+        if (g.pending) this.grab = g;
+      }
       this.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       this.pinch = this.spread();
     });
@@ -192,6 +210,17 @@ export class TouchControls {
       if (e.pointerId === this.stickId) return this.moveStick(e.clientX, e.clientY);
       const f = this.fingers.get(e.pointerId);
       if (!f) return;
+      const g = this.grab;
+      if (g && g.id === e.pointerId) {
+        DRAG_GRAB.at.x = e.clientX;
+        DRAG_GRAB.at.y = e.clientY;
+        // (holding a thing: the finger moves it; waiting: still, or past the slop a look after all)
+        if (g.on) return;
+        if (g.pending && Math.hypot(e.clientX - g.pending.x, e.clientY - g.pending.y) <= SLOP.touch) return;
+        dropPending(g.pending);
+        this.grab = null;
+      }
+      if (this.grab?.on) return;
       if (this.fingers.size >= 2) {
         // Two fingers: pinch (apart = closer).
         f.x = e.clientX;
@@ -216,6 +245,12 @@ export class TouchControls {
         this.stick.run = false;
         this.base.classList.remove('is-on');
         this.rest();
+      }
+      const g = this.grab;
+      if (g && g.id === e.pointerId) {
+        this.grab = null;
+        if (g.on) endGrab(e.type === 'pointerup');
+        else dropPending(g.pending);
       }
       this.fingers.delete(e.pointerId);
       this.pinch = this.spread();
@@ -328,6 +363,11 @@ export class TouchControls {
     this.stick.x = this.stick.y = 0;
     this.stick.run = false;
     this.fingers.clear();
+    if (this.grab) {
+      if (this.grab.on) endGrab(false);
+      else dropPending(this.grab.pending);
+      this.grab = null;
+    }
     this.jumpHit = this.jumpHeld = this.useHit = this.useHeld = this.shutterHit = this.closeHit = this.fishHit = this.runHeld = false;
     if (this.useHide) this.setUse(null);
     this.keyHits.length = 0;

@@ -432,7 +432,7 @@ add-on: E, the visit, buying, the camera, the maps' badge, the URL),
 `_bikeShopPlan.ts` (where everything is, no three.js: the stall's frame, its hours,
 the buyer's place, the delivery spot, `SHOP_MECHANIC`), `_bikeShopStall.ts` (the
 stall's blocks and its walk map), `_bikeShopSign.ts` (the painted words),
-`_bikeOwn.ts` (the kinds, prices and trade-in, his bicycle and where it stands,
+`_bikeOwn.ts` (the kinds and prices, his bicycles and where each stands,
 saved; no three.js), the mechanic `people/_sceneBikeShop.ts` (scene `bikeshop`); the
 bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
 
@@ -471,7 +471,7 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   over it and the parked motos kept out of the lens; never out over the land to the west:
   a phone's draws and triangles stay as at the market's cards), the picture slides left of the card, and the card opens in the buy
   menu's look (the `sl-` rows): the mechanic's words ("ចង់បានកង់មួយមែនទេ បង? …"; he
-  has one: "កង់បងនៅល្អទេ? ចង់ដូរមួយថ្មីមែនទេ?"), the three bicycles (each its
+  has one: "កង់បងនៅល្អទេ? ចង់បានមួយទៀតទេ?"), the three bicycles (each its
   picture on a light tile, its name and a line, what it costs him now), "Ride it
   anywhere: it stays where you leave it" while he has none, the purse.
 - **Prices** (pocket money tops the purse up to 20,000 ៛ each dawn, and at a visit's start only once a map
@@ -481,27 +481,28 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   ពណ៌ខៀវមេឃ: a white basket, a cream saddle and grips, white mudguards, a skirt
   guard) **85,000 ៛**, the red bicycle with a back seat (កង់ក្រហម មានកៅអីក្រោយ:
   chrome mudguards, a padded seat on the rack to carry a friend, a lamp on the fork,
-  streamers from the grips) **120,000 ៛**. **One bicycle**: buying another trades his
-  in for half its price (`TRADE_IN`, to 1,000 ៛: 30,000, 43,000, 60,000), shown on the
-  row ("Trade in yours: 43,000 ៛ off", the old price struck through); his own says
+  streamers from the grips) **120,000 ៛**. **He keeps every one he buys** (one of each
+  kind, at its full price; no trade-in: the player, November 2026); one he has says
   "✓ Yours" (taken: "That one's yours already"). More than the purse holds: the row
   greyed, its price in red, "15,000 ៛ more"; tried anyway, it shakes and the mechanic
   says to save up a little more.
 - **Bought**: the purse pays (the notes, the purse glows and counts down), the
   mechanic hands it over (`SALE`), he reaches and takes its key on a red tag (the
   `interact` action, the key in his fist: the rig's `bikeShop` slot), the bell rings,
-  a toast ("Bought: …! It stands in front of the shop"; traded: "Your old one traded
-  in for 43,000 ៛"), and the bicycle stands on its stand before the stall's east
-  end, pointing east along the street (`SHOP_DELIVER`); the old one, wherever it
-  was, is gone. The card shuts by itself 2.6 s later.
-- **His own bicycle** (`_bikeOwn.ts` `BIKE_OWN`): ridden as the others (the same
-  model in its look), it stays where he gets off it, across Esc back to the map and
-  between visits. Saved (map/progress.ts): `bike.own` (`{ kind, colour }`),
-  `bike.ownAt` (`{ x, z, yaw°, y }`: `y` the floor it was left on, so one left on a
-  terrace, a deck or a bridge stands there again after a reload, not on the land under
-  it inside the stone; a save without `y` stands it on the land), `bike.bought` (how many). Its badge "កង់របស់ខ្ញុំ
-  / My bicycle" (`my-bike`, a bicycle with a pink heart) stands where it is on the
-  mini-map and the big map (it goes while he rides it, and while he has none); the
+  a toast ("Bought: …! It stands in front of the shop"), and the bicycle stands on its
+  stand before the stall's east end, pointing east along the street (`SHOP_DELIVER`;
+  beside one of his already there, a metre out to the street: `deliverySpot`); the
+  ones he had stay where he left them. The card shuts by itself 2.6 s later.
+- **His own bicycles** (`_bikeOwn.ts` `BIKE_OWN.bikes`, in the order bought): ridden as
+  the others (the same model in its look; `_bike.ts` has one for each kind), each stays
+  where he gets off it, across Esc back to the map and between visits. Saved
+  (map/progress.ts): `bike.owned` (a list of `{ kind, colour, x, z, yaw°, y }`: `y` the
+  floor it was left on, so one left on a terrace, a deck or a bridge stands there again
+  after a reload, not on the land under it inside the stone; one without `y` stands on
+  the land; a save from the one-bicycle days, `bike.own` + `bike.ownAt`, is read into
+  the list), `bike.bought` (how many). Each has its badge "កង់របស់ខ្ញុំ / My bicycle"
+  (`my-bike`, `my-bike-2`, `my-bike-3`: `MY_BIKE_IDS`, a bicycle with a pink heart)
+  where it stands on the mini-map and the big map (it goes while he rides it); the
   shop's "ហាងកង់ / Bicycle shop" (`bike-shop`, a bicycle under a blue tarp; on the
   big map 20 m behind the stall, clear of the market's): both named on the big map
   only while pointed at, picked or the target.
@@ -528,9 +529,9 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
 - **URL**: `bikeshop=1` he stands at the buyer's place facing the mechanic, the card
   open · `bikeshopbuy=town|lady|carrier` buys it as it opens (`sim=_:1.1` the hand-over,
   `_:3.2` shut, the bicycle out front) · `bikeshopfocus=<i>` the ring on row i ·
-  `bikeshopopen=all|none` holds the shop open or shut · `bikeown=<kind>[:<colour>]`
-  he has that bicycle (`town`, `lady`, `carrier`; `0` none; colours `black`, `sky`,
-  `red`) · `bikeownat=x:z:yaw°[:y]` it stands there, on the floor at `y` (a terrace, a
+  `bikeshopopen=all|none` holds the shop open or shut · `bikeown=<kind>[:<colour>][,…]`
+  he has those bicycles (`town`, `lady`, `carrier`; `0` none; colours `black`, `sky`,
+  `red`) · `bikeownat=x:z:yaw°[:y][,…]` they stand there (in the same order), on the floor at `y` (a terrace, a
   deck; left out, on the ground there; no `bikeownat`, before the shop; nothing saved
   from either) · `bikehire=1` the hire bicycle is his for now · `purse=<riel>` · with
   `bike=ride`, `bikeleft=` ("Bicycle"). `report()` gives `bikeshop`, `bikeown`,
@@ -539,7 +540,7 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   the mechanic's flags, his action); `bikeDebug()` (above).
   E.g. the stall `cam=346.3,14,-78.9,340.6,9.2,-68.4,50&ui=0&clock=0.85`; the card
   `roam=walk&at=340.93,-71.11&clock=0.85&bikeshop=1&purse=70000` (`lang=en`; with
-  `bikeown=town` the trade-in; `touch=1&phone=1` a phone); buying
+  `bikeown=town` with one already; `touch=1&phone=1` a phone); buying
   `…&purse=95000&bikeshopbuy=lady&sim=_:1.1`; riding his own
   `roam=walk&at=352,-75&yaw=241&bike=ride:4&bikeown=carrier&sim=w:1&rcam=115,14,6.5`;
   a neighbour's `roam=walk&at=349.4,-71.2&yaw=90&sim=e:0.1,_:0.6`; the hire
@@ -3037,7 +3038,34 @@ sounds `audio/_build.ts`.
   end at both sides at whatever angle the gap has (`snapFence` → `closeFence`; first, before a
   run going on), no guide; and a run going on from an end **stops on another free end's line**
   where that line, out to 6 m past its end, crosses it at 30° or more (`meetLine`: the corner
-  they make; the next run closes it square). The materials are a whole run's. The turn
+  they make; the next run closes it square). **His land as one map** (November 2026,
+  `_buildLand.ts`, made by `_buildSpots.ts` `landMapOf` from its own rules, in idle slices after
+  roaming starts, ≈ 250 ms in all): 0.25 m squares over his land's box, each with what stops a piece
+  there for good — the water, the trail and paths, a field, past his land (a neighbour's yard), his
+  house's room (a square all inside it), something of the world standing there (the stream's bank
+  stones; read from the walk map without his own blocks, pieces or garden: `baseGroundAt`). Two
+  masks: a **piece** keeps 0.5 m from the trail and the water, a **fence** none from a path, 0.15 m
+  from the water, its middle line may lie on his land's edge (`MARGINS`, `FENCE_EDGE`). `canBuild`
+  asks the map square by square (then the live rules: level, trees, plants, his pieces and
+  buildings, the cart, his cows, the room before a piece). **The cord** is the fence mask's outline
+  where it meets past-the-land, a yard or the bank stones (`runs`; not along the trail's or the
+  stream's own sides, nor round islands under 25 m²: a rock, a tree's trunk), and **back from the
+  steps**: within 1.5 m of the edge a square where the land steps (over 0.12 m within 0.4 m: a
+  cliff's top, a terrace's lip) is on the edge's side, so the cord runs on flat ground and breaks
+  where the land steps across it (only the cord: the rules are as they were). A fence fits along
+  it: a run within 0.55 m of it and within 15° of along it lies just inside, its outer face on the
+  cord, and on a side shorter than a run a new one is as long as the side (`snapEdge`,
+  `state().placing.edge`; 256 of 257 checks along the cord take a fence at once, the last a 1 m
+  side on a step). At a corner two runs laid so meet: runs square to
+  each other join when their ends are within 0.2 m (`CORNER_MEET`, a fence's depth apart), and a
+  run joined end to end that would stand past his land (going on from a fence ending on the cord)
+  is laid just inside the cord instead (reaching 1.2 m for it), with the cord's own reason if it
+  cannot stand there either (the ground), never "past your land". **The red squares** (`_buildLandView.ts`): while he
+  builds, what stops the kind he places on his land besides the trail's tread and the water
+  itself (their margins, the bank, his house) is a faint red film on the ground. Only the ground
+  along a fence's middle must be level (where its posts stand). The map gives every spot the old
+  rules gave and more (a jar 11 574 → 12 047 spots on a 0.5 m grid, a bed 21 404 → 21 410, a fence
+  23 923 → 24 141, the pen 5 084 → 5 287; none lost). `state().plot.land`. The materials are a whole run's. The turn
   shows: "E  Build here 45°" (the phone's Use button reads "សង់នៅទីនេះ ៤៥°") and in the
   touch bar between ⟲ ⟳ and the other buttons. "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
   the row, before a hammock, the dog, the house's doors) pays riel for what he lacks
@@ -3071,10 +3099,36 @@ sounds `audio/_build.ts`.
   draws it there, its light, seat, hammock and prayer spot go with it, `BuildUses.forget`); **Esc**
   ("Put it back") leaves it where it was. Either way move mode goes on for the next; Esc there (✕,
   ○) ends it, as walking 8 m off his land, another mode or another row of the card. The touch bar
-  shows only its card and ✕ buttons until he carries one. Footprint buildings are not moved (the
-  block layer's: take one down and draw it again). URL: `buildmove=1` (the mode on),
-  `buildmove=<uid>` (that piece carried); `__build.moveMode(on)`, `__build.move(uid)` (null, or
-  why not), `state().moveMode` (`aimed`, `why`), `state().placing.moving`.
+  shows only its card and ✕ buttons until he carries one.
+  **Press and drag** (the quick way, November 2026; `dragGrab.ts`, `_build.ts` `dragGrab`): on foot
+  by his land, the mouse over a thing he built draws it gold with "Hold and drag to move it" by the
+  pointer (or why not, in red; the cursor a hand), every piece and footprint building, from wherever
+  he stands (`grabAt`: no reach). A press held still 0.22 s (a finger 0.35 s) grabs it; moved more
+  than 6 px (10 px) first, the press is a camera drag as ever, and a drag on the grass always is.
+  While held, the ghost follows the ground under the pointer, offset as where he grabbed it, turned
+  as it stood and by `,` / `.` (the touch ⟲ ⟳), snapping to fence ends and the land's edge as any;
+  the camera holds still. **Let go**: put down there if it may stand ("Let go to put it here"), else
+  put back with the reason as a toast; Esc (✕) puts it back. No mode is left on after. Pads keep the
+  card's "Move your things" and E. A second finger before the hold is a pinch; the camera or phone
+  up, paint mode, build or footprint mode, the card: no grab.
+  **Footprint buildings move too** (a stilt house, a shed, a fence line: November 2026): aimed at
+  as a piece is (each part's box from its lowest block to its top; a piece in it or before it wins),
+  drawn over in gold (`FootGhost` 'pick'), refused while half built, with furniture on its floor or
+  hung from its roof ("Take out what is in the … first", `furnitureIn`) or, a fence ring his herd
+  uses as its pen, while a cow of his is in it (`penHolds('foot-<uid>')`) (`whyNotFoot`). Picked up,
+  it is carried in footprint mode (`FootMode.carry`): its footprint at its own size before his feet
+  (its near side 1.8 m ahead; or where the mouse points, or the tap), `,` / `.` (⟲ ⟳, the d-pad)
+  turn the whole building a quarter, its door side with it; the placing rules as a new one's over
+  every part, its own land not counted (`FOOTS.skip`), his land's budget with its own blocks taken
+  out, nothing to pay, no cost panel. **"E  Put it here"**: `FOOTS.move` takes its blocks up and
+  writes its plan at the new footprint whole in one change of the layer (the newest plan version),
+  its paint kept (`paintTake` / `paintGive`: block by block when the new plan is the same blocks in
+  the same order, else each part, stage and material, as most of it was); its cost is kept for
+  taking it down later; saved at once, blocks first. URL: `buildmove=1` (the mode on),
+  `buildmove=<uid>` (that piece carried), `buildmove=foot:<uid>[@x/z[/door]]` (that building
+  carried, its middle held at x, z); `__build.moveMode(on)`, `__build.move(uid)`,
+  `__build.moveFoot(uid)` (null, or why not), `state().moveMode` (`aimed`: a piece's uid or
+  `foot:<uid>`, `why`), `state().placing.moving`, `state().foot.carrying`.
 - **The work** (it holds him): he walks to the side of the piece nearest him (round a
   big one, a side every 5.5 s; nearer a small one), his hammer in his right hand, and
   hammers — squatting flat-footed for low work, standing for high; the blow on the block
@@ -3395,6 +3449,9 @@ lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's picture
   `build.pieces` keeps its floor's height `y`). The pot, the baskets, the mortar, the loom, the oil
   lamp stop him; the bench is a seat as the bamboo bed (its top 0.5 m: too high a step, Space hops onto
   it); the mats and the hanging lantern he walks through.
+- **The bench has no back** (`seat.both`, `seat.along` in build/furniture.ts; `_buildUses.ts` `seatSpot`): he sits
+  facing out from the side he comes from (its front or its back), where he stands along it (short of the jug and
+  cups at its +x end), not always at one place facing its front (November 2026).
 - **Seats** (the bench, the sleeping mat, as the bamboo bed and the shelter's bench): "E  Sit" is
   offered from any side of it and from beside it, whichever way he faces within 0.7 m of it (it comes
   before a piece near it), and J (L on the

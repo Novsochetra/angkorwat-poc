@@ -10,6 +10,8 @@ import { HOME_DOG, HOME_GRAN, HOME_SIZE, HOME_STAIR, HOME_STAIR_FOOT, HOME_Z, ho
 import { SURFACE } from '../heightfield';
 import { canopyOf, type Canopy } from '../veg/canopy';
 import type { WordKey } from '../ui/lang';
+import { BLOCKS, cellOf } from '../blocks/store';
+import { createLandMap, LAND_CELL, type LandKind, type LandMap } from './_buildLand';
 import type { RoamWorld } from './types';
 
 /**
@@ -80,10 +82,12 @@ const STEP = 0.7;
 const LEVEL = 0.12;
 /** Things standing taller than this over the land are in the way (m). */
 const THING = 0.3;
-/** Water (the stream, its bank) is kept this far clear (m). */
-const WATER_MARGIN = 0.6;
-/** Paths and trails are kept this far clear (m). */
-const PATH_MARGIN = 0.5;
+/**
+ * A fence run (`fence`) on his land's edge: its middle line may lie on the edge (its half depth past it). The margins
+ * kept round the water and the trail (a piece half a metre, a fence none from a path and 0.15 m from the water, as a
+ * fence along a lane or a bank) are the land map's (_buildLand.ts `MARGINS`).
+ */
+const FENCE_EDGE = { land: 0.14 } as const;
 /** Footprints may touch this much (m: a fence's run against the next one's). */
 const TOUCH = 0.03;
 /** A point this near a piece he built is that piece's (the walk map's top there is his own posts and rails) (m). */
@@ -104,6 +108,8 @@ export function overlapsBuilt(f: Foot, b: Foot): boolean {
 }
 /** Two fence runs' ends meet when this near (m: roam/_build.ts `snapFence` puts them on each other). */
 export const MEET = 0.06;
+/** Two runs square to each other meet at a corner when their ends are this near (m: a fence's depth and a little). */
+const CORNER_MEET = 0.2;
 
 /**
  * A fence run's end on the map (`end` −1 or 1: along its local x; its length its own, a run that closes a gap, or its
@@ -124,11 +130,15 @@ const _eb: [number, number] = [0, 0];
  */
 export function fenceJoint(a: Foot, b: Foot): number {
   if (a.id !== 'fence' || b.id !== 'fence') return 0;
+  // (square to each other: a corner, as two runs laid just inside his land's cord meet, their middles a fence's depth
+  // apart; `CORNER_MEET`)
+  const square = Math.abs(Math.cos(a.yaw - b.yaw)) < 0.2;
   for (let i = -1; i <= 1; i += 2)
     for (let k = -1; k <= 1; k += 2) {
       fenceEnd(a, i, _ea);
       fenceEnd(b, k, _eb);
-      if (Math.hypot(_ea[0] - _eb[0], _ea[1] - _eb[1]) < MEET) return FENCE_JOINT;
+      const d = Math.hypot(_ea[0] - _eb[0], _ea[1] - _eb[1]);
+      if (d < MEET || (square && d < CORNER_MEET)) return FENCE_JOINT;
     }
   return 0;
 }
@@ -175,14 +185,14 @@ export function byHouse(x: number, z: number, r: number): boolean {
 }
 
 /** Each point across the footprint (grown by `m`), as world x, z: `fn` returns a reason to stop. */
-function eachPoint(f: Foot, m: number, fn: (x: number, z: number) => BuildReason | null): BuildReason | null {
+function eachPoint(f: Foot, m: number, fn: (x: number, z: number) => BuildReason | null, step = STEP): BuildReason | null {
   const p = sizeOf(f);
   const c = Math.cos(f.yaw);
   const s = Math.sin(f.yaw);
-  const hw = p.w / 2 + m;
-  const hd = p.d / 2 + m;
-  const nx = Math.max(1, Math.ceil((hw * 2) / STEP));
-  const nz = Math.max(1, Math.ceil((hd * 2) / STEP));
+  const hw = Math.max(0, p.w / 2 + m);
+  const hd = Math.max(0, p.d / 2 + m);
+  const nx = Math.max(1, Math.ceil((hw * 2) / step));
+  const nz = Math.max(1, Math.ceil((hd * 2) / step));
   for (let i = 0; i <= nx; i++)
     for (let k = 0; k <= nz; k++) {
       const lx = -hw + (i / nx) * hw * 2;
@@ -240,7 +250,8 @@ function pastLand(x: number, z: number): BuildReason {
   for (const h of EV_HOMES) if (Math.hypot(x - h.x, z - h.z) < Math.max(h.w, h.d) / 2 + 5) return 'yard';
   return 'plot';
 }
-const onLand = (x: number, z: number): BuildReason | null => (inPlot(x, z) ? null : pastLand(x, z));
+/** A fence's point: on his land or within its half depth past the edge (`FENCE_EDGE.land`). */
+const onLandFence = (x: number, z: number): BuildReason | null => (inPlot(x, z, -FENCE_EDGE.land) ? null : pastLand(x, z));
 const onHouse = (x: number, z: number): BuildReason | null => {
   const [lx, lz] = homeLocal(x, z);
   return atHouse(lx, lz) ? 'house' : null;
@@ -251,6 +262,57 @@ const onLevel = (x: number, z: number): BuildReason | null => {
   _hi = Math.max(_hi, h);
   return _hi - _lo > _level || Math.abs(h - _h0) > _level ? 'steep' : null;
 };
+// ── His land as one map (_buildLand.ts) ─────────────────────────────────────
+
+let land: LandMap | null = null;
+let landWorld: RoamWorld | null = null;
+/**
+ * His land's map (made from these rules, once): the water, the trail, past his land, his house and what the world
+ * stands there, for a piece and for a fence; the cord and the red squares come from it.
+ */
+export function landMapOf(world: RoamWorld): LandMap {
+  if (land && landWorld === world) return land;
+  landWorld = world;
+  // (his own blocks' columns at the time: never "something standing"; what he builds later is asked live)
+  const own = new Set<number>();
+  BLOCKS.forEach((i, _j, k) => own.add(i * 65536 + k));
+  const base = world.baseGroundAt ?? world.groundAt;
+  land = createLandMap(
+    {
+      ground(x, z) {
+        _world = world;
+        const w = onWater(x, z);
+        if (w) return w === 'water' ? 'water' : 'far';
+        const p = onPath(x, z);
+        return p === 'path' || p === 'field' ? p : p ? 'far' : null;
+      },
+      land(x, z, kind) {
+        _world = world;
+        // (a square counts as his when its middle is within half a square of the land: its edge is not on the
+        // squares' lines, and a piece reached it before the map)
+        const r = kind === 'fence' ? onLandFence(x, z) : inPlot(x, z, -LAND_CELL / 2) ? null : pastLand(x, z);
+        return r === 'yard' ? 'yard' : r ? 'plot' : null;
+      },
+      // (a square all inside the room kept round his house: its rings are round, the squares are not)
+      house: (x, z) => {
+        const h = LAND_CELL / 2 - 0.01;
+        return !!onHouse(x - h, z - h) && !!onHouse(x + h, z - h) && !!onHouse(x - h, z + h) && !!onHouse(x + h, z + h);
+      },
+      thing(x, z) {
+        if (own.has(cellOf(x) * 65536 + cellOf(z))) return false;
+        return base(x, z) - world.field.heightAt(x, z) > THING;
+      },
+      height: (x, z) => world.field.heightAt(x, z),
+    },
+    (x, z) => inPlot(x, z),
+  );
+  return land;
+}
+
+let _kind: LandKind = 'piece';
+const onLandMap = (x: number, z: number): BuildReason | null => land!.why(_kind, x, z);
+const onThingMap = (x: number, z: number): BuildReason | null => (land!.thing(x, z) ? 'thing' : null);
+
 const onCart = (x: number, z: number): BuildReason | null => {
   const w = cartBlockWhy(x, z);
   return w === 'here' ? 'cart' : w === 'place' ? 'cartPlace' : null;
@@ -289,11 +351,16 @@ export function canBuild(world: RoamWorld, id: PieceId | 'foot', x: number, z: n
   _level = size?.level ?? LEVEL;
   const p = size ?? PIECES[id as PieceId];
   // (the land, the water, the paths and fields round it, his land's edge, the house)
-  let r = eachPoint(f, WATER_MARGIN, onWater) ?? eachPoint(f, PATH_MARGIN, onPath) ?? eachPoint(f, 0, onLand) ?? eachPoint(f, 0.1, onHouse);
+  const fence = id === 'fence';
+  // (the water, the trail, past his land, his house: the land map, square by square, its margins in it)
+  landMapOf(world);
+  _kind = fence ? 'fence' : 'piece';
+  let r = eachPoint(f, -0.01, onLandMap, LAND_CELL);
   if (r) return r;
   _h0 = world.field.heightAt(x, z);
   _lo = _hi = _h0;
-  r = eachPoint(f, 0, onLevel);
+  // (a fence run: the ground along its middle, where its posts stand; his land's edge often runs along a step of it)
+  r = eachPoint(f, fence ? -sizeOf(f).d / 2 : 0, onLevel);
   if (r) return r;
   // The trees on his land: a trunk (and the room round it), a crown over a piece taller than its lowest leaves.
   for (const t of PLOT_TREES) if (distTo(f, t.x, t.z) < t.trunk || (p.h > t.low && distTo(f, t.cx, t.cz) < t.cr)) return 'tree';
@@ -324,7 +391,7 @@ export function canBuild(world: RoamWorld, id: PieceId | 'foot', x: number, z: n
   // His own cows on their tethers and his parked bicycle (build/owned.ts; AWP-20).
   if ((r = eachPoint(f, 0, ownedAt))) return r;
   // Anything else standing there.
-  return eachPoint(f, -0.05, onThing) ?? frontBlocked(world, f, _h0, ignore);
+  return eachPoint(f, -0.05, onThingMap) ?? frontBlocked(world, f, _h0, ignore);
 }
 
 /**
