@@ -16,9 +16,10 @@ import { cone, mirrorX, rot, smin, subtract, union, type Rot, type Shape } from 
  * - `nagaFan(kind, look)`: the naga rearing up. Its body comes in low from
  *   behind (−z) and rises into a smooth hood; round the hood's rim the heads
  *   (the middle one highest), each a broad cobra head looking ahead (+z)
- *   and a little down. `stair`: seven heads in a pointed arch of kbach
- *   flame leaves (the halo of Angkor Wat's nagas), a tall flame at its
- *   point, `FAN_HEIGHT.stair` m tall at 1:1; `roof`: five heads, no halo,
+ *   and a little down. `stair`: seven heads before one smooth fan, a thin
+ *   plate with a rolled rim behind them (Angkor Wat's nagas' halo made
+ *   smooth: its flame leaves read as a toothed cog from the front, AWP-35),
+ *   `FAN_HEIGHT.stair` m tall at 1:1; `roof`: five heads, no halo,
  *   for the lower ends of a roof's barge boards (scale it down). On y = 0,
  *   facing +z.
  * - `nagaBody(path, r, tail, look)`: its smooth round body along a path (a
@@ -135,7 +136,7 @@ interface FanSpec {
   rh: number;
   spread: number;
   rp: number;
-  /** The halo's band radius (0: none). */
+  /** The halo's radius round the hood's centre (0: none): the smooth fan behind the heads reaches a little past it. */
   halo: number;
   /** How far back the body comes in (m behind the hood). */
   tail: number;
@@ -250,82 +251,34 @@ function headFan(f: FanSpec, heads: HeadAt[]): Shape {
   };
 }
 
-/** A flat flame leaf (in the plane z = `zc`): from its foot, `len` long along the unit (ux, uy), `w` half-wide, `t` half-thick, its tip swept toward (−uy, ux) by `curl` m. */
-function leafShape(bx: number, by: number, zc: number, ux: number, uy: number, len: number, w: number, t: number, curl: number): Shape {
-  const vx = -uy;
-  const vy = ux;
-  const r = len + w + Math.abs(curl);
-  return {
-    box: [bx - r, by - r, zc - t - 0.01, bx + r, by + r, zc + t + 0.01],
-    d(x, y, z) {
-      const px = x - bx;
-      const py = y - by;
-      const u = px * ux + py * uy;
-      const s = clamp(u / len, 0, 1);
-      const v = px * vx + py * vy - curl * s * s;
-      // (the outline: round at the foot, swelling to a third of the way, drawn out to a point)
-      const hw = w * (s < 0.3 ? 0.55 + 0.45 * Math.sin((s / 0.3) * (Math.PI / 2)) : Math.pow(Math.cos(((s - 0.3) / 0.7) * (Math.PI / 2)), 1.15));
-      const d2 = Math.max(Math.abs(v) - hw, -u, u - len) * 0.9;
-      const th = t * (0.45 + 0.55 * Math.sqrt(Math.max(0, 1 - (v * v) / Math.max(hw * hw, 1e-8))));
-      const dz = Math.abs(z - zc) - th;
-      const ox = d2 > 0 ? d2 : 0;
-      const oz = dz > 0 ? dz : 0;
-      return Math.min(Math.max(d2, dz), 0) + Math.sqrt(ox * ox + oz * oz);
-    },
-  };
-}
-
 /**
- * The halo: a band close round the heads (radius `f.halo` round the hood's
- * centre, behind them), from low on one side over the top to the other;
- * flame leaves along its outside, leaning up and curling on outward, a tall
- * flame on its point, and at each end a leaf turned down. A point looks
- * only at the leaves nearest it round the band.
+ * The halo: ONE smooth fan behind the heads (the owner's rule: a cobra with a smooth fan hood; a band with flame leaves
+ * round it read as a toothed cog from the front): a thin plate round over the top (radius `f.halo` and a little more
+ * round the hood's centre), cut level low on its sides behind the hood, a rolled rim along its edge.
  */
 function halo(f: FanSpec): Shape {
-  const R = f.halo;
+  const R = f.halo + 0.12;
   const cy = f.hc;
   const zc = -0.05;
-  const max = 118 * DEG;
-  const hw = 0.055;
-  const t = 0.04;
-  const n = 17;
-  const leaves: Shape[] = [];
-  for (let i = 0; i < n; i++) {
-    const a = -max + ((i + 0.5) * 2 * max) / n;
-    const top = i === (n - 1) / 2;
-    const end = i === 0 || i === n - 1;
-    // (out from the band, leaning toward upright; the ends turned down and out)
-    const lean = top ? 0 : end ? -Math.sign(a) * 0.5 : Math.sign(a) * Math.min(0.6, Math.abs(a) * 0.42);
-    const dir = a - lean;
-    const len = top ? 0.4 : end ? 0.16 : 0.24 - 0.06 * (Math.abs(a) / max);
-    leaves.push(leafShape(Math.sin(a) * (R + hw * 0.5), cy + Math.cos(a) * (R + hw * 0.5), zc, Math.sin(dir), Math.cos(dir), len, top ? 0.085 : 0.078, t * 0.8, top ? 0 : -Math.sign(a) * 0.06));
-  }
-  const step = (2 * max) / n;
+  const t = 0.035;
+  const rim = 0.045;
+  // (its level foot, behind the hood's plate and the lowest heads)
+  const foot = cy - 0.36;
   return {
-    box: [-R - 0.4, cy - R * Math.abs(Math.cos(max)) - 0.4, zc - t - 0.02, R + 0.4, cy + R + 0.5, zc + t + 0.02],
+    box: [-R - 0.1, foot - 0.1, zc - t - rim - 0.03, R + 0.1, cy + R + 0.1, zc + t + rim + 0.03],
     d(x, y, z) {
       const dy = y - cy;
-      const a = Math.atan2(x, dy);
-      // The band, a bead along its inner edge.
-      let d2: number;
-      if (a > max || a < -max) {
-        const s = a > 0 ? 1 : -1;
-        const ex = x - s * Math.sin(max) * R;
-        const ey = dy - Math.cos(max) * R;
-        d2 = Math.sqrt(ex * ex + ey * ey) - hw;
-      } else d2 = Math.abs(Math.sqrt(x * x + dy * dy) - R) - hw;
+      const r = Math.sqrt(x * x + dy * dy);
+      const d2 = Math.max(r - R, foot - y);
       const dz = Math.abs(z - zc) - t;
       const ox = d2 > 0 ? d2 : 0;
       const oz = dz > 0 ? dz : 0;
-      let d = Math.min(Math.max(d2, dz), 0) + Math.sqrt(ox * ox + oz * oz);
-      // The nearest leaves round the band.
-      const fi = (a + max) / step - 0.5;
-      const i = clamp(Math.round(fi), 0, n - 1);
-      const i2 = clamp(fi > i ? i + 1 : i - 1, 0, n - 1);
-      d = smin(d, leaves[i].d(x, y, z), 0.025);
-      if (i2 !== i) d = smin(d, leaves[i2].d(x, y, z), 0.025);
-      return d;
+      const plate = Math.min(Math.max(d2, dz), 0) + Math.sqrt(ox * ox + oz * oz);
+      // The rolled rim: a tube along the plate's round edge.
+      const er = r - (R - rim * 0.6);
+      const ez = z - zc;
+      const tube = Math.max(Math.sqrt(er * er + ez * ez) - rim, foot - y);
+      return smin(plate, tube, 0.02);
     },
   };
 }
@@ -389,7 +342,7 @@ const fanMeshes = new Map<FanKind, SculptMesh>();
 const fanGeometries = new Map<string, BufferGeometry>();
 
 /** A fan's height at 1:1 (m, from its foot to the top of its halo or its highest head). */
-export const FAN_HEIGHT: Record<FanKind, number> = { stair: 2.45, stairFar: 2.45, stairCoarse: 2.45, roof: 2.0, roofFar: 2.0 };
+export const FAN_HEIGHT: Record<FanKind, number> = { stair: 2.31, stairFar: 2.31, stairCoarse: 2.31, roof: 2.0, roofFar: 2.0 };
 
 /** The naga fan of a kind and look (see the file's note): on y = 0, facing +z, at 1:1 (`FAN_HEIGHT`); made once and shared (do not dispose). */
 export function nagaFan(kind: FanKind, look: NagaLook = 'gilt'): BufferGeometry {

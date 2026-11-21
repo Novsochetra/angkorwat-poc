@@ -81,7 +81,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   const shore = buildLakeShore(field, sb, kit, kit, bodies, glow, fr, stage.anchors, low);
   // The garden round it all (groves, palms by the water, bananas, shrubs, tall grass, reeds and lilies, the fishermen's corner): after the shore.
   const kitBefore = kit.count;
-  growLakeMeadow(sb, kit, glow, field, fr, low);
+  growLakeMeadow(sb, kit, glow, field, fr, low, bodies.asLamps(glow));
   const meadow = sb.boxes.length - shore.blocks;
   const meadowKit = kit.count - kitBefore;
   const shoreMesh = buildVoxelMesh(sb, { quality: low ? 'low' : 'medium', name: 'nye:lake:shore' });

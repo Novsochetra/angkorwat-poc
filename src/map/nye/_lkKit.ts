@@ -6,16 +6,15 @@ import { ANIM, perPeriod, SHOW, type Kit } from '../festival/_kit';
 import { GLOW_MODE, type Glow } from '../festival/_glow';
 import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
-import { onTemple } from '../roam/_flag';
 import { LAKE_STAGE } from './plan';
 import { clampBulbs } from './_sqGlow';
-import { GOLD, kitFire, pick, type Tones } from './_sqKit';
+import { bannerTemple, GOLD, kitFire, pick, type Tones } from './_sqKit';
 
 /**
  * The lake venue's shared bits (AWP-35, `lake.ts`): the stage's frame on the water, the woods and lacquer, the glowing
  * boxes (flames, gilt, bulbs, lantern glass: one unlit draw, over 1.0 at night), string lights (their wire in the
- * festival kit, their bulbs glowing, a halo now and then), hanging lanterns, the red banners with the white Angkor Wat
- * (three towers, roam/_flag.ts `onTemple`) as cloth in the kit, and the little wooden boats with their lanterns.
+ * festival kit, their bulbs small bright points), hanging lanterns, the red banners with the white Angkor Wat (three
+ * lotus-bud towers: _sqKit.ts `bannerTemple`) as cloth in the kit, and the little wooden boats with their lanterns.
  *
  * Axes: +x east, −z north; a yaw is radians toward (sin, cos) in x, z.
  */
@@ -332,7 +331,7 @@ export function banner(kit: Kit, x: number, top: number, z: number, yaw: number,
     // The temple on a square of the cloth (as the gate's banners: the flag's drawing, three towers).
     const ty = (v - sq.v0 * h) / sq.side;
     const tx = (u * w - (w - sq.side) / 2) / sq.side;
-    if (tx >= 0 && tx <= 1 && ty >= 0 && ty <= 1 && onTemple(0.27 + tx * 0.46, 0.27 + ty * 0.46)) return 0xfffaf0;
+    if (bannerTemple(tx, ty)) return 0xfffaf0;
     // (a gold band under it — on so few threads a lotus would read as a cross — and a thin deep-red frame inside the border)
     const lv = v - (sq.v0 * h + sq.side + 0.18);
     if (lv >= 0 && lv <= dv * 1.5 && c > 1 && c < cols - 2) return BANNER_GOLD;

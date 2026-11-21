@@ -134,20 +134,24 @@ export const FACE_SMALL = mirrored([
   '   www', // shadow under the chin
 ]);
 
-/** 9 × 12 m: the smallest towers. */
+/**
+ * 9 × 12 m: the smallest towers (and the New Year gates' towers, seen close: nye/_sqGate.ts, _lkPlazaGate.ts). The
+ * Bayon's calm smile, not a scowl: light low brows, heavy lids lowered over a dark crease (no deep eye holes), a broad
+ * nose, the lips closed and full with the corners turned up (no open mouth), long ears down the sides.
+ */
 export const FACE_TINY = mirrored([
-  '  LAL', // diadem
-  ' AAAA',
+  '  LAL', // diadem jewels
+  ' AAAA', // diadem band
   ' aaaa', // forehead
-  ' LLaA', // brows
-  'adxxL', // closed eyes
-  'dallN', // lower lids, tip of the nose
-  'aaadL', // nostrils
-  'aaxLL', // upper lip, smiling corners
-  'daxxx', // mouth line
-  'waaLL', // lower lip
-  ' aaal', // chin
-  '  www', // shadow under the chin
+  ' llaA', // brows, low and light; the root of the nose
+  'aallA', // the heavy upper lids; the nose's bridge
+  'dawwL', // ears; the lowered eyes, a dark crease under the lids
+  'dalLN', // ears, cheeks; the broad nose, its tip
+  'aaada', // ear lobes; the nostrils' shade
+  'aadlL', // the smile's raised corner, the full upper lip
+  ' aadw', // the closed lips' line, a shallow crease at its middle
+  ' aalL', // the full lower lip
+  '  aal', // chin
 ]);
 
 const CELL_OF: Record<string, { depth: number; tone: keyof StoneTones }> = {

@@ -50,6 +50,8 @@ const DIR = -Math.PI / 2;
 const WAVE = perPeriod(2.4);
 const FLUTTER = perPeriod(3.6);
 const POLE = [0xe6e2d8, 0xdcd8ce, 0xeeeae0];
+/** The flags' blue a little lit of its own (the kit's glow), so the festival's warm light does not turn it purple. */
+const BLUE_GLOW = 0.15;
 const WIRE = 0x2a2420;
 
 export function raiseFlags(o: WayIn): { blocks: number; kitBoxes: number } {
@@ -176,7 +178,8 @@ export function flag(kit: Kit, x: number, top: number, z: number, dir: number, w
       while (r1 < rows && at(col, r1) === color) r1++;
       const hh = (r1 - r0) * dv;
       const white = color === FLAG_WHITE;
-      kit.box(cx, top - r0 * dv - hh / 2, cz, du + 0.002, hh + 0.002, white ? 0.045 : 0.025, color, { yaw, anim: ANIM.wave, a: [big ? 0.05 : 0.08, u0, WAVE], b: [phase, 0, 0, 0] });
+      // (the blue a little lit of its own: under the festival's warm light the deep flag blue read purple)
+      kit.box(cx, top - r0 * dv - hh / 2, cz, du + 0.002, hh + 0.002, white ? 0.045 : 0.025, color, { yaw, anim: ANIM.wave, a: [big ? 0.05 : 0.08, u0, WAVE], b: [phase, 0, 0, 0], glow: color === FLAG_BLUE ? BLUE_GLOW : 0 });
       r0 = r1;
     }
   }
@@ -212,9 +215,9 @@ function bunting(kit: Kit, p: { x: number; y: number; z: number }, q: { x: numbe
     const y = yAt(t) - 0.02;
     // (each little flag hangs below the cord, its face across the avenue's line: seen walking up it)
     const o = { yaw, anim: ANIM.wave, a: [0.12, 0, FLUTTER] as [number, number, number], b: [hash3(x, z, i, 9) * 6.28, 0, 0, 0] as [number, number, number, number] };
-    kit.box(x, y - fh * 0.125, z, fw, fh * 0.25, 0.02, FLAG_BLUE, o);
+    kit.box(x, y - fh * 0.125, z, fw, fh * 0.25, 0.02, FLAG_BLUE, { ...o, glow: BLUE_GLOW });
     kit.box(x, y - fh * 0.5, z, fw, fh * 0.5, 0.02, FLAG_RED, o);
-    kit.box(x, y - fh * 0.875, z, fw, fh * 0.25, 0.02, FLAG_BLUE, o);
+    kit.box(x, y - fh * 0.875, z, fw, fh * 0.25, 0.02, FLAG_BLUE, { ...o, glow: BLUE_GLOW });
     if (!low) kit.box(x, y - fh * 0.48, z, fw * 0.36, fh * 0.26, 0.03, FLAG_WHITE, o);
   }
 }
