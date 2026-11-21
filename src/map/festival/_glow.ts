@@ -161,7 +161,7 @@ export class Glow {
             float along = vUv.y;
             float across = vUv.x;
             float ripple = 0.62 + 0.38 * sin(along * 38.0 - uTime * 1.89543 + vSeed * 30.0) * sin(along * 13.0 + uTime * 0.70162);
-            a = pow(1.0 - along, 0.9) * exp(-across * across * 3.0) * ripple * smoothstep(0.0, 0.06, along);
+            a = pow(max(1.0 - along, 0.0), 0.9) * exp(-across * across * 3.0) * ripple * smoothstep(0.0, 0.06, along);
           }
           vec3 col = vCol * a;
           #ifdef USE_FOG

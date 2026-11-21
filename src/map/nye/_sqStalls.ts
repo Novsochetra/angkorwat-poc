@@ -10,9 +10,11 @@ import { STALLS } from './plan';
 import { LAMP_HALO, pick } from './_sqKit';
 
 /**
- * The New Year snack stalls round the square's sides (AWP-35; plan.ts `STALLS`), as at a Cambodian night fair:
- * a timber stand under a striped awning with a scalloped valance, a counter with a red cloth, the goods on it and
- * a little Khmer lamp hanging from the front beam (its flame glows; no light of its own). Four kinds:
+ * The New Year snack stalls round the square's sides (AWP-35; plan.ts `STALLS`), as at a Cambodian night fair and
+ * the owner's references: a timber stand under a red-and-white striped awning with a scalloped valance, a string of
+ * small bulbs along the valance, a counter with a red cloth and the goods on it, two little Khmer lamps hanging from
+ * the front beam and between them round paper lanterns for sale (their glow; no light of their own), and beside the
+ * counter a crate heaped with fruit (mangoes, dragon fruit, bananas, rambutan). Four kinds:
  *
  * - នំ sweets: a charcoal griddle of num krok (its round cups), trays of num kong and palm sugar cakes;
  * - អាំង grill: skewers of beef, grilled corn on a long grill, smoke the people part's;
@@ -69,18 +71,20 @@ const SHOPS: Record<Kind, { km: string; en: string; items: ShopItem[] }> = {
   },
 };
 
-/** Awnings: two red and white, two red and gold. */
+/** Awnings: red and white (the references' night-fair stalls). */
 const AWNING: [number, number][] = [
   [0xc8202a, 0xf2eee4],
-  [0xc8202a, 0xe8b440],
+  [0xbe1c26, 0xf4efe2],
   [0xc8202a, 0xf2eee4],
-  [0xc8202a, 0xe8b440],
+  [0xbe1c26, 0xf4efe2],
 ];
+/** Paper lanterns for sale: warm colours (never a red lantern with tassels). */
+const PAPER = [0.36, 0.46, 0.3, 0.42];
 
 /** The counter (stall space). */
 const COUNTER = { z: 0.7, w: 2.7, d: 0.6, top: 1.0 };
 
-export function buildStalls(b: VoxelBuilder, field: HeightField, lamps: Lamps, glow: Glow | null, low: boolean): void {
+export function buildStalls(b: VoxelBuilder, field: HeightField, lamps: Lamps, glow: Glow | null, low: boolean, bulbs: Lamps | null = null): void {
   const src = traceSource();
   STALLS.forEach((p, i) => {
     const kind = KINDS[i % KINDS.length];
@@ -88,15 +92,34 @@ export function buildStalls(b: VoxelBuilder, field: HeightField, lamps: Lamps, g
     const s = new Site(b, field, p.x, y, p.z, p.facing, src, 870 + i);
     frame(s, AWNING[i % AWNING.length]);
     goods(s, kind, low);
-    // The lamp hanging from the front beam, by the left post: a flame box under a little tower top.
-    const L = s.world(-0.95, 2.3, 1.05);
-    s.box(-0.95, 2.66, 1.05, 0.02, 0.32, 0.02, 0x3a3028, 'mapBark');
-    s.box(-0.95, 2.47, 1.05, 0.26, 0.05, 0.26, 0xb4a385, 'mapStone');
-    s.box(-0.95, 2.52, 1.05, 0.16, 0.06, 0.16, 0xc8b799, 'mapStone');
-    s.box(-0.95, 2.57, 1.05, 0.06, 0.06, 0.06, 0xd9a93a, 'mapStone');
-    s.box(-0.95, 2.14, 1.05, 0.22, 0.05, 0.22, 0xb4a385, 'mapStone');
-    lamps.add([L.x, L.y, L.z], 0.18, 0.9);
-    glow?.add(L.x, L.y, L.z, LAMP_HALO, 1.6, { level: 0.8 });
+    // The lamps hanging from the front beam by the posts: a flame box under a little tower top.
+    for (const lx of [-0.95, 0.95]) {
+      const L = s.world(lx, 2.3, 1.05);
+      s.box(lx, 2.66, 1.05, 0.02, 0.32, 0.02, 0x3a3028, 'mapBark');
+      s.box(lx, 2.47, 1.05, 0.26, 0.05, 0.26, 0xb4a385, 'mapStone');
+      s.box(lx, 2.52, 1.05, 0.16, 0.06, 0.16, 0xc8b799, 'mapStone');
+      s.box(lx, 2.57, 1.05, 0.06, 0.06, 0.06, 0xd9a93a, 'mapStone');
+      s.box(lx, 2.14, 1.05, 0.22, 0.05, 0.22, 0xb4a385, 'mapStone');
+      lamps.add([L.x, L.y, L.z], 0.18, 0.75);
+      glow?.add(L.x, L.y, L.z, LAMP_HALO, 1.6, { level: 0.6 });
+    }
+    // Paper lanterns for sale between them, on cords of three lengths: round, between two dark wooden rings.
+    for (const [k, lx] of [-0.45, 0, 0.45].entries()) {
+      const drop = 0.32 + 0.14 * ((k + i) % 3);
+      const ly = 2.78 - drop;
+      s.box(lx, 2.8 - drop / 2, 1.05, 0.015, drop, 0.015, 0x3a3028, 'mapBark');
+      s.box(lx, ly - 0.02, 1.05, 0.14, 0.03, 0.14, 0x4a3020, 'mapBark');
+      s.box(lx, ly - 0.3, 1.05, 0.14, 0.03, 0.14, 0x4a3020, 'mapBark');
+      const P = s.world(lx, ly - 0.16, 1.05);
+      lamps.add([P.x, P.y, P.z], 0.2, PAPER[(k + i) % PAPER.length]);
+    }
+    // A string of small bulbs along the valance's foot (medium and up).
+    if (bulbs && !low)
+      for (let k = 0; k < 8; k++) {
+        const P = s.world(-1.5 + (k * 3.0) / 7, 2.4 - 0.05 * Math.sin((k / 7) * Math.PI), 1.82);
+        bulbs.add([P.x, P.y, P.z], 0.09, 0.8 + 0.3 * hash3(i, k, 3, 871));
+      }
+    fruit(s, low);
     // Trees keep off it.
     field.occupy(p.x - 2.2, p.z - 2.2, p.x + 2.2, p.z + 2.2);
     // The shop: before the counter's middle, facing the stall.
@@ -152,6 +175,34 @@ function frame(s: Site, [red, other]: [number, number]): void {
   s.box(0.6, 0.2, -0.2, 0.36, 0.06, 0.36, 0xd8352a, 'mapStone');
   s.box(0.6, 0.09, -0.2, 0.3, 0.18, 0.3, 0xc82e24, 'mapStone');
   s.box(-0.8, 0.22, -0.35, 0.6, 0.44, 0.42, tone(PLANK, 6, 7), 'mapBark');
+}
+
+/** Beside the counter (its right, the buyers' side): a crate on a stool heaped with fruit for the New Year. */
+function fruit(s: Site, low: boolean): void {
+  const x = 1.85;
+  const z = 1.15;
+  // (a woven bamboo crate, pale, on a red stool)
+  s.box(x, 0.16, z, 0.5, 0.32, 0.42, 0xc82e24, 'mapStone');
+  s.box(x, 0.45, z, 0.66, 0.26, 0.54, pick(BAMBOO, 8, 9, 1, s.seed), 'mapBark', { shade: 1.08 });
+  s.box(x, 0.59, z, 0.7, 0.04, 0.58, pick(BAMBOO, 9, 8, 1, s.seed), 'mapBark', { shade: 1.12 });
+  const r = (a: number, b = 0) => hash3(a, b, 11, s.seed);
+  // Mangoes, dragon fruit (magenta, green tips), a hand of bananas, rambutan.
+  const heap: [number, number, number, number, number][] = [
+    [-0.18, -0.1, 0.13, 0xf2b33a, 0],
+    [-0.04, -0.12, 0.13, 0xe8a030, 0],
+    [-0.12, 0.04, 0.12, 0xf4c04a, 0],
+    [0.12, -0.08, 0.15, 0xd8336e, 1],
+    [0.16, 0.08, 0.14, 0xc82a62, 1],
+    [0.0, 0.1, 0.1, 0xc8281e, 2],
+    [-0.06, 0.12, 0.1, 0xb82218, 2],
+  ];
+  for (const [k, [dx, dz, w, col, kind]] of heap.entries()) {
+    if (low && k % 2) continue;
+    s.box(x + dx, 0.6 + w / 2 - 0.02, z + dz, w, w * 0.85, w, col, 'petal', { ry: r(k) * 1.5, shade: 0.95 + 0.1 * r(k, 1) });
+    if (kind === 1 && !low) s.box(x + dx, 0.6 + w * 0.9, z + dz, 0.04, 0.05, 0.04, 0x5aa03a, 'petal');
+  }
+  // (the bananas: a hand of four laid across the back)
+  for (let k = 0; k < (low ? 2 : 4); k++) s.box(x - 0.2 + k * 0.1, 0.66 + 0.02 * (k % 2), z + 0.2, 0.06, 0.06, 0.3, 0xf0d040, 'petal', { ry: 0.3 + 0.1 * k });
 }
 
 /** The goods on the counter (and beside it), by kind. */

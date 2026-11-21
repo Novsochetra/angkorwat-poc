@@ -63,6 +63,11 @@ export const ANIM = {
   toss: 5,
   /** Foam round a moving boat: as big as the rig's speed (`rigRow.z`, 0‥1), breathing (`a.x` phase). */
   wake: 6,
+  /**
+   * A flame's tongue (a fire bowl, a brazier): stands on its foot and leaps, narrows as it leaps, sways at its tip, and
+   * its glow flickers with it. `a` = (leap 0‥1, phase rad, speed rad/s: whole turns in `PERIOD`, `perPeriod`).
+   */
+  flame: 7,
 } as const;
 
 /** When a box shows. */
@@ -102,6 +107,8 @@ function reachOf(d: readonly number[], o: number): number {
       return half + b * a2 + 0.5 * d[o + 22] * a2 * a2;
     case ANIM.toss:
       return half + b + a2;
+    case ANIM.flame:
+      return half * (1 + a0) + 0.2;
     default:
       return half;
   }
@@ -158,6 +165,9 @@ attribute vec4 iAnim;
 attribute vec4 iAnim2;
 ${KIT_COMMON}
 
+// A flame's flicker (mode 7) for its glow; 1 for every other box.
+float kFlick = 1.0;
+
 mat3 kRotY(float a) { float c = cos(a); float s = sin(a); return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c); }
 mat3 kRotX(float a) { float c = cos(a); float s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
 mat3 kRotZ(float a) { float c = cos(a); float s = sin(a); return mat3(c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0); }
@@ -196,6 +206,16 @@ vec3 kitPos(vec3 p, inout vec3 n) {
     float sp = uRigRow[rig].z;
     sc *= sp * (0.75 + 0.25 * sin(uTime * ${((190 * Math.PI * 2) / PERIOD).toFixed(5)} + iAnim.y * 6.2831853));
     q.x *= 0.6 + 0.4 * sp;
+  } else if (mode == 7) {
+    // (two sines and a quicker third: never in step from one bowl to the next; the foot stays, the tip leaps and sways)
+    float w = uTime * iAnim.w + iAnim.z;
+    float f = 0.5 + 0.3 * sin(w) + 0.2 * sin(w * 2.3 + 1.7) * sin(w * 0.37);
+    float up = p.y + 0.5;
+    q.y = (up * (1.0 + iAnim.y * (f - 0.5) * 2.0) - 0.5) * size.y;
+    q.xz *= 1.0 - 0.35 * up * iAnim.y * f;
+    q.x += 0.12 * size.y * up * up * sin(w * 1.3 + 0.6);
+    q.z += 0.1 * size.y * up * up * sin(w * 0.9 + 2.1);
+    kFlick = 0.8 + 0.4 * f;
   }
   vec3 local = c + R * (q * sc);
   n = R * n;
@@ -246,7 +266,7 @@ function inject(shader: WebGLProgramParametersWithUniforms, u: KitUniforms, colo
   vec3 kP = kitPos(position, kN);
   vec3 objectNormal = kN;
   vKitCol = iCol * (0.84 + 0.16 * smoothstep(-1.0, 0.2, normal.y));
-  vKitGlow = iCol * iRot.z * uGlow;`,
+  vKitGlow = iCol * iRot.z * uGlow * kFlick;`,
       )
       .replace('#include <begin_vertex>', 'vec3 transformed = kP;');
   else shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', 'vec3 kN = normal;\n  vec3 transformed = kitPos(position, kN);');

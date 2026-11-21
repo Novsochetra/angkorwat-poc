@@ -19,6 +19,7 @@ import { Bodies, lakeFrame, smooth } from './_lkKit';
 import { growLakeMeadow } from './_lkMeadow';
 import { buildLakeShore } from './_lkShore';
 import { buildLakeStage } from './_lkStage';
+import { deepWater, WaterLights } from './_lkReflect';
 import { dressLakeWater } from './_lkWater';
 
 /**
@@ -26,28 +27,34 @@ import { dressLakeWater } from './_lkWater';
  * the lakeside crowd on a paved terrace over the north-east shore looks across the shallows at a floating stage, the
  * open lake behind it (the fireworks over the water: `LAKE_SHOW`), the floating village's lights to the left.
  *
- * - The stage (`_lkStage.ts`): bamboo floats, a teak deck with a red lacquer skirt, naga balustrades at its front
- *   corners, Khmer lamps, fire bowls, and at its back a carved sandstone gate with a lotus-bud prasat over the second
- *   countdown board (`board.ts`, 9 × 4.5 m, the same states as Kulen's: clock.ts `boardAt`), red banners with the white
- *   Angkor Wat. Its blocks lie square to it in a turned group (one voxel draw, the carving one more).
+ * - The stage (`_lkStage.ts`): bamboo floats, a teak deck with a red lacquer skirt and a row of small bulbs, two big
+ *   naga rearing either side of the board's front, their bodies along the front rail, fire bowls (live flames:
+ *   `_lkStageFire.ts`), Khmer lamps, and at its back a deep carved sandstone gate over the second countdown board
+ *   (`board.ts`, 10 × 5 m, the same states as Kulen's: clock.ts `boardAt`) under three lotus-bud towers outlined in
+ *   bulbs, red banners with the white Angkor Wat on tall poles. Its blocks lie square to it in a turned group (one voxel
+ *   draw, the carving one more).
  * - The shore (`_lkShore.ts`): the round plaza (`_lkPlaza*.ts`: concentric pavers round a gold lotus mandala — the
  *   Kulen ring's painting, `_sqRing.ts` — the ring wall with fire pillars, lamp posts and string lights, the Bayon-face
  *   gate with naga along its avenue, two salas, food stalls, flower beds, a lily pond), the ghat down into the water,
  *   the jetty to the stage, lantern poles and the string lights fanning from the stage, flowering trees.
  * - The garden round it (`_lkMeadow.ts`): groves, blossom trees, palms by the water, bananas, shrubs, tall grass, reeds,
  *   lilies, the fishermen's corner (nets drying, fish traps, a skiff on the sand), stepping stones; in the shore's mesh.
- * - On the water (`_lkWater.ts`): floating lotus candles from the ghat and round the stage, lily pads, moored boats.
- * - The event night (clock.ts `nightHeld`): more candles (a kit and glow of their own, drawn only then), gold
+ * - On the water (`_lkWater.ts`): floating lotus candles from the ghat and round the stage, lily pads and glowing
+ *   lotus, moored boats; every light's reflection a warm streak (`_lkReflect.ts`); at night the water round the venue
+ *   deepened to the reference's blue (`_lkReflect.ts` `deepWater`, one draw).
+ * - The event night (clock.ts `nightHeld`): more candles and the lantern flotilla (`_lkBoats.ts`: lantern boats, lotus
+ *   floats, two illuminated floats with Angkor Wat in lights; in a kit and glow of their own, drawn only then), gold
  *   searchlight beams from behind the stage over the water (the square's, `_sqGlow.ts` `buildBeams`), everything
  *   brighter; with the count the stage's light beats.
  *
  * Draws: the stage's blocks and carving (2), the shore's blocks (a mesh per family: stone, leaf, bark, petal), the kit
- * (cloth, flags, wires, candles, boats, blossom, the fires' tongues and embers: 1), the glowing boxes (flames, gilt,
- * bulbs, lantern glass: 1), the glow (halos, streaks: 1), the board (1), the naga (1, once sculpted); but on low the
- * plaza's mandala (1) and the naga by its gate (1); on the event night the extra candles (2) and the beams (1). Two
- * real lights at night (sky/lampSlots.ts): over the stage's front, and out over the plaza's avenue before its gate (the
- * gate's face, the plaza's back half). Nothing moves but in shaders and the board's texture (the part is FROZEN): the
- * stage's group is turned once, at the build.
+ * (cloth, flags, wires, candles, boats, blossom, the plaza's fire tongues and embers: 1), the glowing boxes (gilt, bulbs,
+ * lantern glass, the plaza's fires' hearts: 1), the stage's live flames (1; on low they are glowing boxes), the glow
+ * (halos, streaks: 1), the board (1), the naga (1, once sculpted), the deep water (1, at night); but on low the plaza's
+ * mandala (1) and the naga by its gate (1); on the event night the extra candles and the flotilla (2) and the beams (1).
+ * Two real lights at night (sky/lampSlots.ts): over the stage's front, and out over the plaza's avenue before its gate
+ * (the gate's face, the plaza's back half). Nothing moves but in shaders and the board's texture (the part is FROZEN):
+ * the stage's group is turned once, at the build.
  */
 export function buildNyeLake(ctx: MapContext): NyePiece {
   const t0 = performance.now();
@@ -61,11 +68,12 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   const kit = new Kit();
   const glow = new Glow();
   const eventKit = new Kit();
-  const eventGlow = new Glow();
+  /** The halos of what floats and every light's reflection on the water (one draw; the event night's only then). */
+  const lights = new WaterLights();
   const bodies = new Bodies();
 
   // ── The stage, the shore, the water ──
-  const stage = buildLakeStage(fr, kit, bodies, glow, low);
+  const stage = buildLakeStage(fr, kit, bodies, glow, lights, low);
   object.add(stage.object);
   const tStage = performance.now();
   const sb = new VoxelBuilder();
@@ -88,7 +96,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
     object.add(ring.mesh);
   }
   const tShore = performance.now();
-  const water = dressLakeWater(field, fr, kit, glow, eventKit, eventGlow, shore.waterEdge, low);
+  const water = dressLakeWater(field, fr, kit, glow, eventKit, lights, shore.waterEdge, low);
   // (the stage on the water: no trees, nothing else built there)
   for (let v = -LAKE_STAGE.d / 2 - 1; v <= LAKE_STAGE.d / 2 + 1; v += 1.5)
     for (let w = -LAKE_STAGE.w / 2 - 1; w <= LAKE_STAGE.w / 2 + 1; w += 1.5) {
@@ -102,7 +110,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   for (const [i, du] of offs.entries()) {
     const [x, z] = fr.at(du, -LAKE_STAGE.d / 2 - 0.2);
     beamBases.push([x, fr.deck + 0.4, z, i]);
-    eventGlow.add(x, fr.deck + 0.7, z, 0xffd080, 2.6, { level: 0.55 });
+    lights.halo(x, fr.deck + 0.7, z, 0xffd080, 2.6, { level: 0.55, event: true });
   }
   const beams = buildBeams(beamBases, offs.length, fr.yaw + Math.PI, new Sphere(new Vector3(fr.x, fr.deck + 120, fr.z), 280));
   object.add(beams.mesh);
@@ -110,10 +118,12 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   // ── Where it all is: the bounds three culls by ──
   const mid = new Vector3((fr.x + LAKE_SHORE.x) / 2, fr.deck + 6, (fr.z + LAKE_SHORE.z) / 2);
   const reach = Math.hypot(LAKE_SHORE.x - fr.x, LAKE_SHORE.z - fr.z) / 2 + Math.max(LAKE_SHORE.rx, LAKE_SHORE.rz) + 55;
-  const bound = (mesh: Mesh, r = reach) => {
-    mesh.geometry.boundingSphere = new Sphere(mid.clone(), r);
+  const bound = (mesh: Mesh, r = reach, at = mid) => {
+    mesh.geometry.boundingSphere = new Sphere(at.clone(), r);
     mesh.frustumCulled = true;
   };
+  /** The night's flotilla reaches ≈ 150 m out round the stage (`_lkBoats.ts`). */
+  const lakeMid = new Vector3(fr.x, fr.water + 4, fr.z);
   const kitMesh = kit.build('nye:lake', u);
   kitMesh.show(true);
   kitMesh.mesh.castShadow = false;
@@ -124,11 +134,18 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   object.add(halos.mesh);
   const extraKit = eventKit.build('nye:lake:candles', u);
   extraKit.mesh.castShadow = false;
-  bound(extraKit.mesh);
+  bound(extraKit.mesh, 175, lakeMid);
   object.add(extraKit.mesh);
-  const extraHalos = eventGlow.build('nye:lake:candles', u);
-  bound(extraHalos.mesh);
-  object.add(extraHalos.mesh);
+  const waterLights = lights.build('nye:lake', u);
+  bound(waterLights.mesh, 185, lakeMid);
+  object.add(waterLights.mesh);
+  // The water round the venue at night: deep blue under the warm reflections (out over the flotilla, behind the stage,
+  // to the far water the terrace looks across).
+  const [dwx, dwz] = fr.at(0, -60);
+  const deep = deepWater(dwx, dwz, fr.water + 0.035, 70, 240);
+  object.add(deep.mesh);
+  // The stage's live flames (null on low: there they are glowing boxes).
+  if (stage.fire) object.add(stage.fire.mesh);
 
   // ── The board, facing the shore ──
   const board = buildBoard({ ...stage.board, yaw: fr.yaw, far: 200, name: 'nye:lake:board', ground: 'lake' });
@@ -164,7 +181,8 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   }
   terraceAt.name = 'nye lake terrace light';
   object.add(stageAt, terraceAt);
-  const stageLamp = addLamp({ kind: 'point', name: 'nye lake stage', color: 0xffa050, distance: 32, anchor: stageAt });
+  // (a warm white, not orange: the stone should read pale sandstone lit by fire, not an orange box)
+  const stageLamp = addLamp({ kind: 'point', name: 'nye lake stage', color: 0xffc488, distance: 32, anchor: stageAt });
   const terraceLamp = addLamp({ kind: 'point', name: 'nye lake terrace', color: 0xffb060, distance: 44, anchor: terraceAt });
 
   const shadows = new ShadowGate(true).addAll(object);
@@ -176,7 +194,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
     if ((o as Mesh).isMesh || (o as Points).isPoints) draws++;
   });
   console.info(
-    `[map] nye lake: ${blocks} blocks (stage ${stage.blocks}, shore ${shore.blocks}, meadow ${meadow} + ${meadowKit} in the kit, kit ${kitMesh.boxes} + ${extraKit.boxes} on the night) · ${bodies.count} glowing boxes · ${glow.count} glows · ${water.candles} candles · ${draws} meshes (the naga +1) · deck ${fr.deck.toFixed(2)} m · built in ${(performance.now() - t0).toFixed(0)} ms (stage ${(tStage - t0).toFixed(0)}, shore ${(tShore - tStage).toFixed(0)})`,
+    `[map] nye lake: ${blocks} blocks (stage ${stage.blocks}, shore ${shore.blocks}, meadow ${meadow} + ${meadowKit} in the kit, kit ${kitMesh.boxes} + ${extraKit.boxes} on the night) · ${bodies.count} glowing boxes (stage bulbs ${stage.bulbs}) · ${stage.flames} live flames · ${glow.count} glows, ${lights.count} water lights · ${water.candles} candles · flotilla ${water.flotilla.boats} boats, ${water.flotilla.lotus} lotus floats, ${water.flotilla.floats} illuminated floats · ${draws} meshes (the naga +1) · tower tip ${stage.top.toFixed(1)} m · deck ${fr.deck.toFixed(2)} m · built in ${(performance.now() - t0).toFixed(0)} ms (stage ${(tStage - t0).toFixed(0)}, shore ${(tShore - tStage).toFixed(0)})`,
   );
 
   let now = 0;
@@ -205,7 +223,8 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
       u.uGlow.value = 0.3 + 3.2 * n * n;
       // (the small things — cloth, candles, boats, bulbs, halos — only within 600 m: past it they are a few pixels)
       // (and drawn wherever the camera is in the first frames, so their shaders compile at load)
-      const near = frames++ < 4 || f.camera.position.distanceToSquared(mid) < 600 * 600;
+      const first = frames++ < 4;
+      const near = first || f.camera.position.distanceToSquared(mid) < 600 * 600;
       kitMesh.mesh.visible = near;
       halos.level.value = lit * (1 + 0.3 * event);
       halos.show(lit > 0);
@@ -213,16 +232,23 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
       const extra = near && event > 0 && lit > 0;
       extraKit.show(extra);
       extraKit.mesh.visible = extra;
-      extraHalos.level.value = lit;
-      extraHalos.show(extra);
-      extraHalos.mesh.visible = extra;
+      waterLights.update(near ? lit * (1 + 0.3 * event) : 0, event);
+      // (in the first frames drawn with nothing in them, so the program compiles at load, not at dusk)
+      waterLights.mesh.visible = near && (lit > 0 || first);
       if (body) body.mesh.visible = near;
       body?.update(n, event + 0.4 * pulse);
+      if (stage.fire) {
+        stage.fire.mesh.visible = near;
+        stage.fire.update(now, n, event + 0.4 * pulse);
+      }
+      deep.update(n, event);
+      if (!near) deep.mesh.visible = false;
+      else if (first) deep.mesh.visible = true;
       beams.u.uLevel.value = event * lit;
       beams.u.uTime.value = now % 600;
       beams.mesh.visible = event * lit > 0.001;
       const breathe = 1 + 0.06 * Math.sin(f.t * 2.3) + 0.04 * Math.sin(f.t * 3.7);
-      stageLamp.intensity = 200 * lit * breathe * (1 + 0.45 * event + 0.5 * pulse);
+      stageLamp.intensity = 150 * lit * breathe * (1 + 0.45 * event + 0.5 * pulse);
       terraceLamp.intensity = 120 * lit * (1 + 0.3 * event);
       board.update(f);
       ring?.update(n, event, now);

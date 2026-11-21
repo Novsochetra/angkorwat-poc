@@ -2,13 +2,12 @@ import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { ANIM, perPeriod, type Kit } from '../festival/_kit';
-import type { Glow } from '../festival/_glow';
 import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import { FLAG_WHITE, flagCell } from '../roam/_flag';
 import { GATE, SQUARE, STAGE } from './plan';
 import type { BuiltTree } from './_sqGarden';
-import { GOLD, pick } from './_sqKit';
+import { GOLD, hangingBanner, pick } from './_sqKit';
 
 /**
  * The square's dressing (AWP-35): red banners with the white Angkor Wat on tall poles round its edge (the cloth
@@ -18,11 +17,11 @@ import { GOLD, pick } from './_sqKit';
  * Angles round the square: θ from +x (east), z = SQUARE.z + rz·sin θ (+z south: θ 90° is the gate, −90° the stage).
  */
 
-/** Banners on the square's edge (θ degrees) and the two flanking the gate outside (map x, z). */
+/** Banners on the square's edge (θ degrees) and the two flanking the gate's passage outside (map x, z of the pole; the side). */
 const BANNER_THETA = [0, 180, -42, 222, 42, 138];
 const GATE_BANNERS: [number, number, number][] = [
-  [GATE.x - 8.6, GATE.z + 3.4, -Math.PI / 2],
-  [GATE.x + 8.6, GATE.z + 3.4, Math.PI / 2],
+  [GATE.x - 6.3, GATE.z + 3.5, -1],
+  [GATE.x + 6.3, GATE.z + 3.5, 1],
 ];
 /** Lotus pots (map x, z): by the gate inside, along the way, at the stage's stairs. */
 const POTS: [number, number][] = [
@@ -52,7 +51,7 @@ export interface DecorOut {
   trees: [number, number, number][];
 }
 
-export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs: Lamps, glow: Glow | null, low: boolean, garden: readonly BuiltTree[] = []): DecorOut {
+export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs: Lamps, low: boolean, garden: readonly BuiltTree[] = []): DecorOut {
   const src = traceSource();
   /** String-light anchors: map point, θ (for the order round the square), its side (east +1, west −1). */
   const anchors: { x: number; y: number; z: number; th: number }[] = [];
@@ -77,7 +76,20 @@ export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs
     const top = pole(x, z, dir, 10 + i);
     anchors.push({ x, y: top - 0.9, z, th });
   }
-  for (const [i, [x, z, dir]] of GATE_BANNERS.entries()) pole(x, z, dir, 30 + i, 8);
+  // The gate's two: a lacquered pole before each wing, a gilt arm in toward the passage, a long banner hanging from it
+  // facing the village (the owner's sheet, "ENTRANCE GATE"), between the braziers and the wings' ends.
+  for (const [i, [x, z, sd]] of GATE_BANNERS.entries()) {
+    const g = field.heightAt(x, z);
+    const h = 7.4;
+    b.box(x, g + 0.2, z, 0.56, 0.4, 0.56, pick([0x9c6d50, 0x916349], x, z, 1), 'mapStone', { src });
+    b.box(x, g + h / 2, z, 0.18, h, 0.18, pick(POLE, x, z, 2), 'mapBark', { src });
+    b.box(x, g + h + 0.06, z, 0.28, 0.12, 0.28, pick(GOLD, x, z, 3), 'mapStone', { src });
+    b.box(x, g + h + 0.24, z, 0.13, 0.24, 0.13, pick(GOLD, x, z, 4), 'mapStone', { src, shade: 1.08 });
+    const arm = g + h - 0.55;
+    b.box(x - sd * 0.85, arm, z, 1.7, 0.09, 0.09, pick(GOLD, x, z, 5), 'mapStone', { src, shade: 1.02 });
+    hangingBanner(kit, x - sd * 0.95, arm - 0.05, z + 0.08, 0, 1.25, 4.4, low, 30 + i, 0.05);
+    field.occupy(x - 0.4, z - 0.4, x + 0.4, z + 0.4);
+  }
 
   // ── The flowering trees (the garden's: _sqGarden.ts `NYE_TREES`, built before this) ──
   const trees: [number, number, number][] = [];
@@ -100,15 +112,15 @@ export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs
     const q = anchors[i + 1];
     // (east side: −90° < θ < 90°; west: 90° < θ < 270°: never across the gate's or the stage's line)
     if (side(p.th) !== side(q.th)) continue;
-    stringLights(kit, bulbs, glow, p, q, 0.9, every, low);
+    stringLights(kit, bulbs, p, q, 0.9, every);
   }
   // Two strings from the square's south corners up to the gate's top corners (beside the way, never across it).
   {
     const [wx, wz] = ell(124, 1.0);
     const [ex, ez] = ell(56, 1.0);
     const g = field.heightAt(GATE.x, GATE.z - 6);
-    stringLights(kit, bulbs, glow, { x: wx, y: g + 5.6, z: wz }, { x: GATE.x - 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every, low);
-    stringLights(kit, bulbs, glow, { x: ex, y: g + 5.6, z: ez }, { x: GATE.x + 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every, low);
+    stringLights(kit, bulbs, { x: wx, y: g + 5.6, z: wz }, { x: GATE.x - 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every);
+    stringLights(kit, bulbs, { x: ex, y: g + 5.6, z: ez }, { x: GATE.x + 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every);
   }
 
   // ── Lotus pots ──
@@ -174,9 +186,10 @@ function banner(kit: Kit, x: number, y: number, z: number, dir: number, w: numbe
 
 /**
  * A string of warm bulbs from p to q, sagging `sag` m: the wire in short straight pieces (the kit), a bulb every
- * `every` m (a glowing box, and a small halo when not on the low level).
+ * `every` m (a glowing box, a small bright point at any distance: `_sqGlow.ts` `clampBulbs`; no halo of its own, the
+ * bloom's is enough).
  */
-function stringLights(kit: Kit, bulbs: Lamps, glow: Glow | null, p: { x: number; y: number; z: number }, q: { x: number; y: number; z: number }, sag: number, every: number, low: boolean): void {
+function stringLights(kit: Kit, bulbs: Lamps, p: { x: number; y: number; z: number }, q: { x: number; y: number; z: number }, sag: number, every: number): void {
   const len = Math.hypot(q.x - p.x, q.z - p.z);
   if (len < 1) return;
   const yaw = Math.atan2(q.x - p.x, q.z - p.z) - Math.PI / 2;
@@ -200,7 +213,6 @@ function stringLights(kit: Kit, bulbs: Lamps, glow: Glow | null, p: { x: number;
     const z = p.z + (q.z - p.z) * u;
     const y = yAt(u) - 0.09;
     bulbs.add([x, y, z], 0.11, 0.8 + 0.4 * hash3(x, z, i, 3));
-    if (!low && i % 2 === 0) glow?.add(x, y, z, 0xffc070, 0.9, { level: 0.45 });
   }
 }
 

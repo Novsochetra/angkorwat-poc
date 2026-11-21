@@ -24,7 +24,8 @@ import { ARCH, AVENUE, KERB_LAMP, layAvenue } from './_sqWalk';
  * - pairs of flags round the square's edge between its banners and stalls (θ 30°, 58°, 122°, 150°).
  *
  * All flags fly the same way (the evening breeze from the east: the cloth west of its pole). The avenue itself (its
- * pavers, lamps, fire bowls, the welcome arch) is laid here too (`layAvenue`), so square.ts makes one call.
+ * pavers, lamps, fire bowls, the welcome arch) is laid here too (`layAvenue`), so square.ts makes one call; its fire
+ * bowls' live fires are in this kit (`_sqKit.ts` `kitFire`).
  * Poles: the walk's builder (`wb`, stone) by the avenue, the square's (`b`) round the square and at the gate.
  */
 
@@ -55,9 +56,11 @@ export function raiseFlags(o: WayIn): { blocks: number; kitBoxes: number } {
   const { object, fb, b, wb, field, u, lamps, bulbs, glow, low } = o;
   const src = traceSource();
   const b0 = b.boxes.length + wb.boxes.length;
-  const avenue = layAvenue(fb, wb, field, lamps, bulbs, glow, low);
   const kit = new Kit();
+  const avenue = layAvenue(fb, wb, field, lamps, bulbs, glow, low, kit);
   const spots: Vector3[] = [];
+  // (the avenue's fire bowls burn in this kit too: its bound holds them)
+  for (const [x, z] of avenue.lights) spots.push(new Vector3(x, field.heightAt(x, z) + 2.5, z));
 
   // ── The avenue's rows: pairs of flags facing each other, between the kerb lamps ──
   const every = low ? 9 : 4.5;
