@@ -112,9 +112,11 @@ export function toyGoods(s: Site, C: Counter, lamps: Lamps, glow: Glow | null, l
     const x = bx + Math.cos(a) * d;
     const z = bz + Math.sin(a) * d;
     const c = BALLOON[k % BALLOON.length];
-    s.box(x, h, z, 0.38, 0.44, 0.38, c, 'petal', { ry: r(k, 5) });
-    s.box(x, h - 0.26, z, 0.09, 0.06, 0.09, c, 'petal');
-    if (!low) s.box((bx + x) / 2, (2.75 + h - 0.29) / 2, (bz + z) / 2, 0.012, h - 0.29 - 2.75, 0.012, 0xe8e4dc, 'petal');
+    // (round, not a crate: a squat block crossed by a tall narrow one, a balloon's outline in blocks)
+    s.box(x, h, z, 0.3, 0.26, 0.3, c, 'petal', { ry: r(k, 5) });
+    if (!low) s.box(x, h + 0.01, z, 0.2, 0.4, 0.2, c, 'petal', { ry: r(k, 5) });
+    s.box(x, h - 0.23, z, 0.07, 0.05, 0.07, c, 'petal');
+    if (!low) s.box((bx + x) / 2, (2.75 + h - 0.25) / 2, (bz + z) / 2, 0.012, h - 0.25 - 2.75, 0.012, 0xe8e4dc, 'petal');
   }
 }
 
