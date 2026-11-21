@@ -115,7 +115,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - Settings panel (the gear): five tabs, one page each, so it is only as tall
   as the page you are on and the map stays in view. **General** (language,
   time of day, weather, moon), **Sound**, **Graphics** (graphics level, resolution,
-  fog: one slider, its thickness, battery saver, Short view: on the ground while
+  fog: one slider, its thickness, battery saver, 120 frames a second (a computer only, not shown on a phone:
+  graphics.ts `setFastFrames`, `fps120=1`; the watches that lower the level judge frames against a 60th all the
+  same, `frameCap.judge`), Short view: on the ground while
   roaming the haze closes in and nothing past ≈ 260 m (200 m on a phone) is drawn, the still shadows only round him, `src/map/shortView.ts`,
   `shortview=1` in shots; Auto turns it on once for a phone that cannot keep 30 on low),
   **Play** (mini-map, key help, easy flying, reduce

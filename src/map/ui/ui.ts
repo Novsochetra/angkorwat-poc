@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, VOLUME
 import posthog, { isPostHogConfigured } from '../../posthog';
 import { isResolutionShare, resolutionSizes, sizeForShare, sizeOfShare, stepOf, view, type ResolutionSize } from '../resolution';
 import { FOG_AMOUNT_MAX } from '../sky/fogLevel';
+import { PHONE } from '../graphics';
 import { createSupportCard } from './_support';
 import { createTabs, type TabDef } from './_tabs';
 import { CREDITS, SUPPORT_URL } from './credits';
@@ -135,7 +136,7 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
   ui: 'soundYours',
 };
 /** The on / off settings (a switch each in the panel). */
-type SwitchKey = 'calm' | 'easyFly' | 'keyHelp' | 'battery' | 'shortView' | 'padRumble';
+type SwitchKey = 'calm' | 'easyFly' | 'keyHelp' | 'battery' | 'fps120' | 'shortView' | 'padRumble';
 /**
  * The settings' tabs, in the bar's order (each page is `mu-set-page-<id>`).
  * Sound is the sound page's own word (lang.ts `sound`).
@@ -431,6 +432,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
           <span id="mu-battery-l"><span data-t="battery"></span><small data-t="batteryNote"></small></span>
           <button type="button" class="mu-switch" role="switch" data-set="battery" aria-labelledby="mu-battery-l"><span class="mu-knob"></span></button>
         </div>
+        ${PHONE ? '' : switchRow('fps120', 'fps120', 'fps120', '<small data-t="fps120Note"></small>')}
         <div class="mu-set-row">
           <span id="mu-shortview-l"><span data-t="shortView"></span><small data-t="shortViewNote"></small></span>
           <button type="button" class="mu-switch" role="switch" data-set="shortView" aria-labelledby="mu-shortview-l"><span class="mu-knob"></span></button>

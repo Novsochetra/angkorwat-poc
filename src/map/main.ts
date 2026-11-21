@@ -9,7 +9,7 @@ import { MapCameraRig } from './camera';
 import { cutCovered, ShadowGate } from './cull';
 import { festivalNow, festivalSoon } from './festival/_schedule';
 import { nightHeld, nyeAsked, nyeVideoTime, showSoon, squareShown } from './nye/clock';
-import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, lowerAutoLevel, markStill, PHONE, phoneRate, plainFar, resetAutoLevel, setBatterySaver, setGraphics, STILL_LAYER, stillCasters } from './graphics';
+import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, lowerAutoLevel, markStill, PHONE, phoneRate, plainFar, resetAutoLevel, setBatterySaver, setFastFrames, setGraphics, STILL_LAYER, stillCasters } from './graphics';
 import { compileFor, LateParts, type CompileTimes } from './lazy';
 import { PLACES } from './layout';
 import { isResolutionShare, screenRatio, stepOf, view } from './resolution';
@@ -58,7 +58,7 @@ import { pad, padPrefs } from './pad/pad';
  * (1: built, with its button) · `video=1` a shot that then moves frame by
  * frame (`__videoFrame`, scripts/video.mjs) · `resolution=auto|<share>` the
  * Resolution setting (resolution.ts: 0.5 draws half across) ·
- * `battery=1` the battery saver (30 frames a second) · `fps=30|60` that cap, held (a phone's
+ * `battery=1` the battery saver (30 frames a second) · `fps120=1` the 120 frames a second setting · `fps=30|60|120` that cap, held (a phone's
  * 60-or-30 watch off: graphics.ts `PhoneFrameRate`) ·
  * `fog=auto|full|light|simple` the fog's step (sky/fogLevel.ts; auto, the graphics level's, else) ·
  * `fogamount=0‥1.5` the fog's thickness (1 the game's own, 0 clear air) · `shortview=1` the Short view setting
@@ -127,6 +127,7 @@ function loadSettings(): MapSettings {
     if (typeof saved.padRumble !== 'boolean') delete saved.padRumble;
     if (saved.resolution !== 'auto' && !isResolutionShare(saved.resolution)) delete saved.resolution;
     if (typeof saved.battery !== 'boolean') delete saved.battery;
+    if (typeof saved.fps120 !== 'boolean') delete saved.fps120;
     if (typeof saved.shortView !== 'boolean') delete saved.shortView;
     if (!MOON_PATHS.includes(saved.moonPath as MoonPath)) delete saved.moonPath;
     // (the fog's step was a setting: it follows the graphics level now, and the fog is one slider, its thickness)
@@ -161,6 +162,8 @@ if (GRAPHICS_CHOICES.includes(params.get('graphics') as GraphicsChoice)) setting
 if (params.get('resolution') === 'auto') settings.resolution = 'auto';
 else if (isResolutionShare(Number(params.get('resolution')))) settings.resolution = Number(params.get('resolution'));
 if (params.has('battery')) settings.battery = params.get('battery') !== '0';
+if (params.has('fps120')) settings.fps120 = params.get('fps120') !== '0';
+setFastFrames(settings.fps120);
 setBatterySaver(settings.battery);
 if (params.has('shortview')) settings.shortView = params.get('shortview') !== '0';
 /** `fog=` (checks): hold the fog's step (sky/fogLevel.ts); else auto, the graphics level's. */
@@ -538,6 +541,10 @@ const handlers = {
       newLevelRatio();
     }
     if (s.fogAmount !== was.fogAmount) applyFogAmount();
+    if (s.fps120 !== was.fps120) {
+      setFastFrames(s.fps120);
+      autoWatch.reset();
+    }
     if (s.battery !== was.battery) {
       setBatterySaver(s.battery);
       autoWatch.reset();
@@ -1135,14 +1142,14 @@ function adaptResolution(dt: number): void {
   if (res.frames < 45 || res.since < 1.5) return;
   const avg = res.time / res.frames;
   res.time = res.frames = 0;
-  res.slow = avg > 1.5 * frameCap.time ? res.slow + 1 : 0;
+  res.slow = avg > 1.5 * frameCap.judge ? res.slow + 1 : 0;
   let next = res.ratio;
   if (res.slow >= 2 && res.ratio > 1) {
     res.ceiling = 1;
     res.ceilingAge = 0;
     res.wait = Math.min(600, res.wait * 2);
     next = 1;
-  } else if (avg < 1.05 * frameCap.time && res.ratio < res.ceiling) next = res.ceiling;
+  } else if (avg < 1.05 * frameCap.judge && res.ratio < res.ceiling) next = res.ceiling;
   if (next !== res.ratio) setRatio(next);
 }
 drawing = true;

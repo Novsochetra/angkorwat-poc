@@ -598,25 +598,40 @@ export const PHONE =
   (typeof matchMedia === 'function' && matchMedia('(pointer: coarse) and (hover: none)').matches && Math.min(screen.width, screen.height) < 600);
 /**
  * Frames a second at most (main.ts paces its loop by it): 60, or 30 with the
- * Battery saver setting. A phone draws 60 while it keeps up and an even 30
+ * Battery saver setting, or 120 with the 120 frames a second setting (a computer). A phone draws 60 while it keeps up and an even 30
  * when it does not ({@link PhoneFrameRate}): an even 30 (every other
  * refresh) looks smoother than 40 to 50 that come unevenly, and the device
  * keeps cooler; a 120 Hz screen drew twice the frames for little the eye
  * keeps. `time`: the time a frame has (s), what the resolution and auto's
  * watch measure frames against.
  */
-export const frameCap = { fps: 60, time: 1 / 60 };
+export const frameCap = { fps: 60, time: 1 / 60, judge: 1 / 60 };
+/**
+ * `judge`: the time a frame is measured against by the watches that lower the resolution or the level (main.ts
+ * `adaptResolution`, {@link AutoGraphics}, the garden's smoothness): the cap's, but never under a 60th of a second.
+ * The 120 frames a second setting only lets a fast computer draw more: a frame between 120 and 60 a second is not
+ * "slow", and nothing is drawn worse to reach 120.
+ */
 const setCap = (fps: number): void => {
   frameCap.fps = fps;
   frameCap.time = 1 / fps;
+  frameCap.judge = Math.max(1 / 60, 1 / fps);
 };
-/** `fps=30|60` in the URL: that cap, held (a phone's watch off). */
-const FPS_HELD = ((v) => (v === 30 || v === 60 ? v : 0))(Number(new URLSearchParams(location.search).get('fps')));
+/** `fps=30|60|120` in the URL: that cap, held (a phone's watch off). */
+const FPS_HELD = ((v) => (v === 30 || v === 60 || v === 120 ? v : 0))(Number(new URLSearchParams(location.search).get('fps')));
 let saver = false;
-/** Battery saver on or off (the settings): 30 frames a second, or 60 (a phone: 60 while it keeps up). */
+/** The 120 frames a second setting (a computer: a strong graphics card, a 120 Hz screen; never on a phone). */
+let fast = false;
+const capNow = (): number => FPS_HELD || (saver ? 30 : PHONE ? phoneRate.fps : fast ? 120 : 60);
+/** Battery saver on or off (the settings): 30 frames a second, or 60 (a phone: 60 while it keeps up); it wins over 120. */
 export function setBatterySaver(on: boolean): void {
   saver = on;
-  setCap(FPS_HELD || (on ? 30 : PHONE ? phoneRate.fps : 60));
+  setCap(capNow());
+}
+/** 120 frames a second on or off (the settings; a computer only: a phone keeps its 60 or 30). */
+export function setFastFrames(on: boolean): void {
+  fast = on;
+  setCap(capNow());
 }
 
 const RATE_KEY = 'angkor-map-phone-fps';
@@ -726,7 +741,7 @@ export class PhoneFrameRate {
 }
 /** The phone's rate (main.ts feeds it frames). */
 export const phoneRate = new PhoneFrameRate();
-setCap(FPS_HELD || (PHONE ? phoneRate.fps : 60));
+setCap(capNow());
 
 const AUTO_KEY = 'angkor-map-graphics-auto';
 /** Auto's level: the one it stepped down to on this device before, else a guess (low on a phone, medium on the rest). */
@@ -793,7 +808,7 @@ export class AutoGraphics {
     if (this.time < 2) return null;
     const avg = this.time / this.frames;
     this.time = this.frames = 0;
-    this.slow = settled && avg > 2 * frameCap.time ? this.slow + 1 : 0;
+    this.slow = settled && avg > 2 * frameCap.judge ? this.slow + 1 : 0;
     if (this.slow < 3) return null;
     const next = lowerAutoLevel();
     if (next) this.reset();

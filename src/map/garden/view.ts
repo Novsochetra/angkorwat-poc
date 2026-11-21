@@ -901,7 +901,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
       _ear.setFromMatrixPosition(camera.matrixWorld);
       const real = Number.isNaN(lastT) ? 0 : t - lastT;
       const dt = shot ? 0 : Math.min(0.1, Math.max(0, real)) * slow;
-      smooth = real > 0 && real <= frameCap.time * 1.3 ? smooth + 1 : 0;
+      smooth = real > 0 && real <= frameCap.judge * 1.3 ? smooth + 1 : 0;
       lastT = t;
       now += dt;
       // (the "reduce motion" setting: the drift clock stands while frames go by)

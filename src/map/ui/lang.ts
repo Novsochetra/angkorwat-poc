@@ -707,6 +707,9 @@ const WORDS = {
   resSharpSize: { km: '{size} មុតច្បាស់', en: '{size}, sharp' },
   battery: { km: 'សន្សំថ្ម', en: 'Battery saver' },
   batteryNote: { km: 'យ៉ាងច្រើន ៣០ រូបភាពក្នុងមួយវិនាទី៖ ឧបករណ៍មិនសូវក្ដៅ ហើយថ្មប្រើបានយូរជាង', en: 'At most 30 frames a second: cooler and longer on battery' },
+  // (the 120 frames a second switch: a computer only, not shown on a phone; graphics.ts `setFastFrames`)
+  fps120: { km: '១២០ រូបភាពក្នុងមួយវិនាទី', en: '120 frames a second' },
+  fps120Note: { km: 'កាតក្រាហ្វិកខ្លាំង និងអេក្រង់ 120 Hz៖ រលូនជាង តែក្ដៅជាង', en: 'Strong graphics card and 120 Hz screen: smoother, but hotter' },
   // (the Short view switch: shortView.ts)
   shortView: { km: 'មើលឃើញជិត', en: 'Short view' },
   // (Auto turned it on: a toast while roaming, main.ts)
