@@ -90,6 +90,9 @@ const VIEWS = {
   nye: 'roam=walk&at=384,-252&yaw=0&sim=_:0.2&fireworks=458',
   nyecrowd: 'roam=walk&at=384,-252&yaw=0&sim=_:0.2&countdown=1800',
   nyeover: 'fireworks=458',
+  // (the second stage by the great lake: on its shore terrace before the show, and from the terrace at the finale)
+  nyelake: 'roam=walk&at=-338,-70&yaw=0&sim=_:0.2&countdown=1800&rcam=322,12,12',
+  nyelakefw: 'cam=-330,12.5,-76,-385,30,-15,55&fireworks=458',
   // (New Year's Eve online, phase 2: 50 fake other players (`ghosts=`, people/_scenePlayers.ts) among the night's crowd on
   // the square, on foot by the gate and from the crowd's view)
   nyeplayers: 'roam=walk&at=384,-252&yaw=0&sim=_:0.2&countdown=600&ghosts=50',
