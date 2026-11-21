@@ -2,10 +2,12 @@ import { Vector3 } from 'three';
 import { hash3 } from '../../voxel/random';
 import { graphicsNow } from '../graphics';
 import { nyeAsked, nyeOff, nyeSeconds, NYE_TIMES, squareShown } from '../nye/clock';
-import { LAKE_SHORE, LAKE_SHOW, LAKE_STAGE } from '../nye/plan';
+import { LAKE_SHORE, LAKE_SHOW, LAKE_STAGE, onLakeShore } from '../nye/plan';
+import { SPARK_MAX, SPARKS, sparksOut } from '../nye/_lifeSparks';
 import type { MapFrame } from '../types';
 import { Actor } from './_actor';
 import { dress } from './_kinds';
+import { GROUP, moreSparklers, moveTo, pickCouples, planRunners, RUN, runnerAt, spreadGroups, VONG, vongAt, vongLook, type GroupPlan, type Runner, type Venue } from './_nyeGroups';
 import { matDef } from './_nyePlan';
 import {
   alongLake,
@@ -25,7 +27,9 @@ import {
   netHeapDef,
   planLakeCrowd,
   stagePt,
+  STAGE_FRONT,
   stoolDef,
+  toStage,
   WATER,
   type LakeBoat,
   type LakeCrowdPlan,
@@ -46,15 +50,18 @@ import { Rig } from './_things';
  *
  * **The night** (from 22:20): families walk up the east shore trail from the floating village and onto the terrace
  * (nye/_lkShore.ts) — the mat families on the landing at the top of the ghat, the steps down to the water
- * (grandmother, mother, children; the grandfather on a low stool behind), the standing families over the landing and
- * the terrace, denser toward the stage, the jetty and the pale way up the middle kept open; children with sparklers,
- * phones up. Five boats of families paddle up from the village and moor on the open water beyond the stage's village
+ * (grandmother, mother, children; the grandfather on a low stool behind), young couples sitting side by side on the
+ * ghat's top step by the water, the standing families in small groups over the landing and the terrace, chatting
+ * (`_nyeGroups.ts` `spreadGroups`: denser toward the stage; some round the dance, watching it), the jetty and the pale
+ * way up the middle kept open; children with sparklers (their sparks: nye/_life.ts, from `SPARKS`), children running
+ * between the groups two by two, phones up. From 22:42 couples from the crowd dance the roam vong slowly round the
+ * terrace's medallion (`POSE.vong`), and go back to their families at 23:58:40; the mahori plays on for them. Five boats of families paddle up from the village and moor on the open water beyond the stage's village
  * end, a paper lantern glowing at each bow. From 22:58 two of the mats' children go down the ghat to the second step
  * in the water, kneel and set lotus candles afloat in turn (a few of their own drift off along the shore, among the
  * venue's: nye/_lkWater.ts), squatting to watch them go. On the floating stage (22:30‥23:50) a mahori ensemble (roneat
  * ek, khim, tro) plays at its north-west end and two dancers circle in the romvong; at 23:50 they bow and step aside. The
- * last ten seconds: everyone to the board, phones up, arms counting; midnight: cheering, jumping, two of a family
- * turning to each other, the boats' children standing up; the fireworks over the lake behind the stage (heads up);
+ * last two minutes: everyone turns to the board; the last ten seconds: phones up, arms counting; midnight: cheering,
+ * jumping, two of a family stepping together to hug, the boats' children standing up; the fireworks over the lake behind the stage (heads up);
  * after the show they talk and from 00:09 go home (the boats paddle off; the performers down the jetty from 00:15),
  * the last by 00:40.
  *
@@ -96,6 +103,33 @@ const EX_AT: Point = { x: 0, y: 0, z: 0 };
 const P = { x: 0, z: 0, yaw: 0 };
 const UV = { x: 0, z: 0 };
 const V = new Vector3();
+/**
+ * The roam vong (`_nyeGroups.ts`) round the terrace's medallion (its middle: `LAKE_SHORE`'s), its times as the Kulen
+ * square's (22:42 until 23:58:40), couples at most (on low: their families' only).
+ */
+const VONG_RING = { x: LAKE_SHORE.x, z: LAKE_SHORE.z, r: 6.6 } as const;
+const VONG_FROM = -4700;
+const VONG_TO = -80;
+const VONG_COUPLES = 7;
+/** Children running between the groups, until a minute and a half before midnight. */
+const RUNNERS = 6;
+const RUN_TO = -90;
+/** Everyone turns to the board from two minutes before midnight; midnight's hug (s). */
+const TURN_FROM = -120;
+const HUG_FROM = 1.5;
+const HUG_TO = 8.5;
+/** Young couples sitting side by side on the ghat's top step, by the water (stage frame u of each), more sparklers. */
+const BY_WATER: readonly number[] = [4, 6, -6];
+const MORE_SPARKLERS = 7;
+/** The terrace's rules for a place to stand (as `_nyeLakePlan.ts`'s): the rim's margin, the open lane's half width, the ghat. */
+const RIM = 2.2;
+const LANE = 2.3;
+const GHAT = 8.5;
+const VG = { x: 0, z: 0, yaw: 0, turn: 0 };
+const T = { x: 0, z: 0 };
+const LOOK: Point = { x: 0, y: 0, z: 0 };
+const HAND = { x: 0, y: 0, z: 0 };
+const O = { x: 0, z: 0 };
 
 interface BoatRun {
   b: LakeBoat;
@@ -109,6 +143,19 @@ export class NyeLakeLife implements PeopleScene {
   readonly actors: Actor[] = [];
   private readonly plan: LakeCrowdPlan;
   private readonly crowdActors: Actor[] = [];
+  /** The groups, the roam vong's dancers (each member's place in the ring, high and low: −1 none), the runners (as the Kulen square's). */
+  private readonly groups: GroupPlan;
+  private readonly slotHigh: Int16Array;
+  private readonly slotLow: Int16Array;
+  private readonly dancersHigh: number;
+  private readonly dancersLow: number;
+  private readonly partnerOf: Int16Array;
+  private readonly runners: Runner[];
+  private readonly runnerOf: Int16Array;
+  private readonly inRing: Uint8Array;
+  private readonly away: Uint8Array;
+  private readonly sparklers: number[];
+  private readonly byWater: number;
   private readonly boats: BoatRun[] = [];
   private readonly dancers: Actor[] = [];
   private readonly players: Actor[] = [];
@@ -160,6 +207,82 @@ export class NyeLakeLife implements PeopleScene {
     // The night's crowd (room left in the crowd, less the boats, the stage and the ordinary days' people: up to 78).
     const room = crowd.capacity - crowd.count - 22;
     this.plan = planLakeCrowd(this.site, Math.max(0, Math.min(78, room)));
+    // Made alive (_nyeGroups.ts): couples sitting by the water, the families spread in small groups, the roam vong's
+    // couples, the runners, more sparklers.
+    {
+      const ms = this.plan.members;
+      const site = this.site;
+      this.byWater = this.sitByWater();
+      const bankAt = (u: number) => site.bank[Math.max(0, Math.min(16, Math.round(u) + 8))];
+      const poles = [
+        stagePt(-(GHAT + 2.2), bankAt(-GHAT) + 1.6, { x: 0, z: 0 }),
+        stagePt(GHAT + 2.2, bankAt(GHAT) + 1.6, { x: 0, z: 0 }),
+        stagePt(-(GHAT + 8), bankAt(-GHAT) + 7, { x: 0, z: 0 }),
+        stagePt(GHAT + 8, bankAt(GHAT) + 7, { x: 0, z: 0 }),
+      ];
+      const { mats, stools } = this.plan;
+      const venue: Venue = {
+        ok: (x, z) => {
+          const w = field.waterAt(x, z);
+          if ((w !== null && w > field.heightAt(x, z) - 0.05) || field.heightAt(x, z) < WATER + 1.2) return false;
+          if (!site.paved(x, z)) return false;
+          toStage(x, z, O);
+          // (on the terrace, its rim's lamps kept clear, or on the landing above the bank; out of the open lane)
+          if (!onLakeShore(x, z, -RIM) && !(Math.abs(O.x) <= GHAT - 0.5 && O.z >= bankAt(O.x) + 1)) return false;
+          if (O.z > STAGE_FRONT && Math.abs(O.x) < LANE) return false;
+          if (Math.hypot(x - VONG_RING.x, z - VONG_RING.z) < VONG_RING.r + 1.6) return false;
+          for (const p of poles) if (Math.hypot(p.x - x, p.z - z) < 2) return false;
+          for (const m of mats) if (Math.hypot(m.x - x, m.z - z) < 2.4) return false;
+          for (const st of stools) if (Math.hypot(st.x - x, st.z - z) < 1.3) return false;
+          return true;
+        },
+        box: [LAKE_SHORE.x - LAKE_SHORE.rx - 12, LAKE_SHORE.z - LAKE_SHORE.rz - 12, LAKE_SHORE.x + LAKE_SHORE.rx + 12, LAKE_SHORE.z + LAKE_SHORE.rz + 12],
+        board: (x, z) => Math.atan2(LAKE_STAGE.x + Math.sin(LAKE_STAGE.yaw) * STAGE_FRONT - x, LAKE_STAGE.z + Math.cos(LAKE_STAGE.yaw) * STAGE_FRONT - z),
+        front: { ...stagePt(0, bankAt(0) + 3, { x: 0, z: 0 }), reach: 12 },
+        ring: VONG_RING,
+        stalls: [],
+        stallOut: 4,
+        // (children run across the open lane too: anywhere paved and dry, clear of the poles and the mats)
+        open: (x, z) => {
+          const w = field.waterAt(x, z);
+          if ((w !== null && w > field.heightAt(x, z) - 0.05) || !site.paved(x, z) || !onLakeShore(x, z, -1.2)) return false;
+          for (const p of poles) if (Math.hypot(p.x - x, p.z - z) < 1.6) return false;
+          for (const m of mats) if (Math.hypot(m.x - x, m.z - z) < 2.2) return false;
+          return true;
+        },
+        seed: 0x1a4e + 5,
+      };
+      this.groups = spreadGroups(ms, venue);
+      const couples = pickCouples(ms, VONG_COUPLES, () => true, 0x1a4e + 6);
+      this.slotHigh = new Int16Array(ms.length).fill(-1);
+      this.slotLow = new Int16Array(ms.length).fill(-1);
+      this.partnerOf = new Int16Array(ms.length).fill(-1);
+      let hi = 0;
+      let lo = 0;
+      for (const [a, b] of couples) {
+        for (const k of [a, b]) {
+          ms[k].look = vongLook(ms[k].look, k);
+          ms[k].phone = false;
+        }
+        this.partnerOf[a] = b;
+        this.partnerOf[b] = a;
+        this.slotHigh[a] = hi++;
+        this.slotHigh[b] = hi++;
+        if (ms[a].low && ms[b].low) {
+          this.slotLow[a] = lo++;
+          this.slotLow[b] = lo++;
+        }
+      }
+      this.dancersHigh = hi;
+      this.dancersLow = lo;
+      this.runners = planRunners(ms, this.groups, venue, RUNNERS, (k) => this.slotHigh[k] < 0);
+      this.runnerOf = new Int16Array(ms.length).fill(-1);
+      this.runners.forEach((r, j) => (this.runnerOf[r.k] = j));
+      moreSparklers(ms, MORE_SPARKLERS, (k) => this.slotHigh[k] < 0, 0x1a4e + 7);
+      this.sparklers = ms.map((m, k) => (m.sparkler ? k : -1)).filter((k) => k >= 0).slice(0, SPARK_MAX);
+      this.inRing = new Uint8Array(ms.length);
+      this.away = new Uint8Array(ms.length);
+    }
     for (const m of this.plan.members) this.crowdActors.push(mk(m.look));
     for (const b of this.plan.boats) {
       const crew = b.crew.map((c) => mk(c.look, false));
@@ -215,7 +338,7 @@ export class NyeLakeLife implements PeopleScene {
     const crew = this.plan.boats.reduce((s, b) => s + b.crew.length, 0);
     const crewLow = this.plan.boats.reduce((s, b) => s + (b.low ? b.crew.length : 0), 0);
     console.info(
-      `[map] nye lake people: ${ms.length} on the terrace (${n((m) => m.low)} on low; ${this.plan.groups.length} families, ${this.plan.mats.length} mats, ${n((m) => m.role === 'sit' || m.role === 'lotus')} seated, ${n((m) => m.role === 'stool')} on stools, ${n((m) => m.kid)} children, ${n((m) => m.sparkler)} sparklers, ${n((m) => m.phone)} phones, ${n((m) => m.role === 'lotus')} with lotus candles), ${this.plan.boats.length} boats with ${crew} (${crewLow} on low), ${this.plan.candles.length} candles, ${this.actors.length} in all`,
+      `[map] nye lake people: ${ms.length} on the terrace (${n((m) => m.low)} on low; ${this.plan.groups.length} families, ${this.plan.mats.length} mats, ${n((m) => m.role === 'sit' || m.role === 'lotus')} seated, ${n((m) => m.role === 'stool')} on stools, ${n((m) => m.kid)} children, ${n((m) => m.sparkler)} sparklers, ${n((m) => m.phone)} phones, ${n((m) => m.role === 'lotus')} with lotus candles, ${this.byWater} couples by the water; groups ${this.groups.count[0]} out on the terrace, ${this.groups.count[2]} round the dance; roam vong ${this.dancersHigh} (${this.dancersLow} on low), ${this.runners.length} running), ${this.plan.boats.length} boats with ${crew} (${crewLow} on low), ${this.plan.candles.length} candles, ${this.actors.length} in all`,
     );
   }
 
@@ -239,10 +362,11 @@ export class NyeLakeLife implements PeopleScene {
     this.mend(!night && MENDING(c), now, dt, ex);
     // The night.
     const ms = this.plan.members;
-    for (let k = 0; k < ms.length; k++) this.member(k, night && (!low || ms[k].low), s, now, dt, ex);
+    for (let k = 0; k < ms.length; k++) this.member(k, night && (!low || ms[k].low), s, now, dt, ex, low);
     for (const b of this.boats) this.boat(b, night && (!low || b.b.low), s, now, dt, f);
     this.floatCandles(night, s, now);
     this.stage(night, s, now, dt, f);
+    this.sparks(night);
     // (the crowd's murmur, children laughing: never in shots)
     if (night && f.dt > 0 && now > this.murmurAt && s > LAKE_COME + 400 && s < LAKE_GONE) {
       this.murmurAt = now + 3.6;
@@ -354,15 +478,43 @@ export class NyeLakeLife implements PeopleScene {
     a.step(dt, now);
   }
 
-  /** One of the terrace's crowd: on the way, in their place (a lotus child down at the water's edge), on the way home. */
-  private member(k: number, on: boolean, s: number, now: number, dt: number, ex: Obstacle | null): void {
+  /** Young couples (families of two grown-ups, partners) sitting side by side on the ghat's top step, facing the lake. */
+  private sitByWater(): number {
+    const ms = this.plan.members;
+    const site = this.site;
+    const size = (g: number) => ms.reduce((c, q) => c + (q.group === g ? 1 : 0), 0);
+    const used = new Set<number>();
+    let n = 0;
+    for (const u of BY_WATER) {
+      const k = ms.findIndex((m, i) => !used.has(i) && m.role === 'stand' && !m.kid && m.partner > i && ms[m.partner].role === 'stand' && !ms[m.partner].kid && size(m.group) === 2);
+      if (k < 0) break;
+      const p = ms[k].partner;
+      // (the top step of one strip of the ghat, half a run down from its bank's edge: the two side by side on it)
+      const v = site.bank[Math.max(0, Math.min(16, Math.round(u) + 8))] - 0.25;
+      if (![-0.32, 0.38].every((du) => Number.isFinite(site.stepTop(u + du, v)))) continue;
+      [k, p].forEach((i, j) => {
+        stagePt(u + (j ? 0.38 : -0.32), v, UV);
+        moveTo(ms[i], UV.x, UV.z, LAKE_STAGE.yaw + Math.PI);
+        ms[i].role = 'sit';
+        used.add(i);
+      });
+      n++;
+    }
+    return n;
+  }
+
+  /** One of the terrace's crowd: on the way, in their place (a lotus child down at the water's edge; dancing, running about), on the way home. */
+  private member(k: number, on: boolean, s: number, now: number, dt: number, ex: Obstacle | null, low: boolean): void {
     const m = this.plan.members[k];
     const a = this.crowdActors[k];
     const g = this.plan.groups[m.group];
     const L = m.cum[m.cum.length - 1];
     const goneD = (s - g.leave) * g.v - m.lag;
     const comeD = (s - g.start) * g.v - m.lag;
-    if (!on || comeD < 0 || goneD >= L) return void (a.shown && a.hide());
+    if (!on || comeD < 0 || goneD >= L) {
+      this.inRing[k] = this.away[k] = 0;
+      return void (a.shown && a.hide());
+    }
     if (comeD < L || goneD > 0) {
       const home = goneD > 0;
       const d = home ? L - goneD : comeD;
@@ -401,14 +553,109 @@ export class NyeLakeLife implements PeopleScene {
       a.step(dt, now);
       return;
     }
+    // The roam vong round the medallion.
+    const slot = low ? this.slotLow[k] : this.slotHigh[k];
+    if (slot >= 0 && s >= VONG_FROM && s < VONG_TO) return this.vong(k, slot, low ? this.dancersLow : this.dancersHigh, s, now, dt);
+    if (this.inRing[k]) {
+      this.inRing[k] = 0;
+      a.riding = false;
+    }
+    // Running between the groups.
+    const r = this.runnerOf[k];
+    if (r >= 0 && s < RUN_TO) return this.run(k, this.runners[r], s, now, dt);
+    // Back from the dance or a run: walking to their place.
+    if (this.away[k] && a.shown && a.dist(m.x, m.z) > 0.45) {
+      this.put(a, m.x, m.z, m.yaw, 80);
+      a.goTo(m.x, m.z, 1.15);
+      a.face(null);
+      a.pose(POSE.stand, now);
+      a.carry(m.sparkler ? 1 : 0, now);
+      a.lookAt(null);
+      a.tilt(0);
+      a.step(dt, now);
+      return;
+    }
+    this.away[k] = 0;
     this.put(a, m.x, m.z, m.yaw, 6);
-    a.goTo(m.x, m.z, 0.6);
-    a.pose(this.mood(m, a, s, now), now);
+    T.x = m.x;
+    T.z = m.z;
+    const pose = this.mood(k, m, a, s, now);
+    a.goTo(T.x, T.z, 0.6);
+    a.pose(pose, now);
     if (ex && s < -10 && a.dist(ex.x, ex.z) < 2.5) this.glance(a, ex, now);
     a.step(dt, now);
     if (m.jumps && s >= 0 && s < 14 && a.shown) {
       const hop = Math.abs(Math.sin((s + k * 0.37) * Math.PI * 1.6)) * 0.22 * (1 - s / 14);
       a.crowd.place(a.i, a.x, a.y + hop, a.z, a.yaw);
+    }
+  }
+
+  /** A dancer of the roam vong (as the Kulen square's): to their place in the ring, then slowly round it, the hands dancing. */
+  private vong(k: number, j: number, n: number, s: number, now: number, dt: number): void {
+    const a = this.crowdActors[k];
+    vongAt(j, n, s, VONG_RING, 0.6, VG);
+    this.away[k] = 1;
+    if (!this.inRing[k] && a.shown && a.dist(VG.x, VG.z) > 0.7) {
+      a.riding = false;
+      a.goTo(VG.x, VG.z, 1.25);
+      a.face(null);
+      a.pose(POSE.stand, now);
+      a.carry(0, now);
+      a.lookAt(null);
+      a.tilt(0);
+      a.step(dt, now);
+      return;
+    }
+    this.inRing[k] = 1;
+    a.ride(VG.x, this.groundAt(VG.x, VG.z), VG.z, VG.yaw);
+    a.show();
+    a.pose(POSE.vong, now);
+    a.carry(0, now);
+    a.tilt(0);
+    const p = this.crowdActors[this.partnerOf[k]];
+    if (p?.shown) {
+      LOOK.x = p.x;
+      LOOK.y = p.y + 1.5 * p.crowd.scale(p.i);
+      LOOK.z = p.z;
+      a.lookAt(LOOK, now + 1);
+    } else a.lookAt(null);
+    a.step(dt, now);
+    a.crowd.gait(a.i, 0.55, a.crowd.stepRate(a.i, VONG.pace * 1.6), now);
+  }
+
+  /** A child running round its loop between the groups (as the Kulen square's). */
+  private run(k: number, r: Runner, s: number, now: number, dt: number): void {
+    const a = this.crowdActors[k];
+    const m = this.plan.members[k];
+    const running = runnerAt(r, s, P);
+    this.away[k] = 1;
+    if (a.riding) a.riding = false;
+    this.put(a, P.x, P.z, P.yaw, 4);
+    a.goTo(P.x, P.z, running ? RUN.v * 1.08 : 0.6);
+    a.face(running ? null : P.yaw + Math.PI * 0.6);
+    a.pose(running || m.sparkler ? POSE.stand : hash3(Math.floor(s / 5), a.i, 7, 2027) < 0.5 ? POSE.wave : POSE.cheer, now);
+    a.carry(m.sparkler ? 1 : 0, now);
+    a.lookAt(null);
+    a.tilt(0);
+    a.step(dt, now);
+  }
+
+  /** The sparklers' tips for the night's life (nye/_life.ts): lit while held up. */
+  private sparks(night: boolean): void {
+    const out = SPARKS.lake;
+    for (let j = 0; j < out.length; j++) {
+      const k = this.sparklers[j];
+      const v = out[j];
+      const a = k === undefined ? null : this.crowdActors[k];
+      if (!night || !a?.shown || a.riding) {
+        v.w = 0;
+        continue;
+      }
+      const c = a.crowd;
+      const sc = c.scale(a.i);
+      c.handAt(a.i, HAND);
+      const up = (HAND.y - a.y) / sc;
+      v.set(HAND.x, HAND.y + 0.84 * sc, HAND.z, Math.min(1, Math.max(0, (up - 0.66) / 0.16)));
     }
   }
 
@@ -427,36 +674,68 @@ export class NyeLakeLife implements PeopleScene {
     return POSE.squat;
   }
 
-  /** What someone in their place does now (as the Kulen square's: the stage, phones, the count, the cheer, the show, after). */
-  private mood(m: LakeMember, a: Actor, s: number, now: number): Pose {
+  /**
+   * What someone in their place does now (as the Kulen square's: chatting in the group, watching the dance or the
+   * stage, phones; turned to the board for the countdown; the cheer and midnight's hug; the show; after).
+   */
+  private mood(k: number, m: LakeMember, a: Actor, s: number, now: number): Pose {
     const seated = m.role !== 'stand';
     const sitPose = m.role === 'stool' ? POSE.stool : POSE.sit;
+    const G = this.groups;
     const w = Math.floor((s + a.i * 2.9) / 7);
     const h = hash3(w, a.i, 6, 2027);
     let yaw = m.yaw;
     let look: Point | null = this.boardAt;
     let pose: Pose = seated ? sitPose : POSE.stand;
     let hold = 0;
-    if (s < -10) {
+    const turned = s >= TURN_FROM + 30 * hash3(a.i, 3, 6, 2027);
+    if (s < -10 && !turned) {
       look = s < DANCE_TO ? this.stageLook : this.boardAt;
+      const chat = G.chat[k];
+      if (!seated && !Number.isNaN(chat)) {
+        const gw = hash3(Math.floor((s + m.group * 13.7) / 24), m.group, 10, 2027);
+        const kind = G.kind[k];
+        const vongOn = s >= VONG_FROM && s < VONG_TO;
+        if (vongOn && ((kind === GROUP.ring && gw < 0.8) || (kind === GROUP.open && gw > 0.84))) {
+          const dx = m.x - VONG_RING.x;
+          const dz = m.z - VONG_RING.z;
+          const d = Math.hypot(dx, dz) || 1;
+          yaw = Math.atan2(-dx, -dz);
+          LOOK.x = VONG_RING.x + (dx / d) * VONG_RING.r;
+          LOOK.y = a.y + 2;
+          LOOK.z = VONG_RING.z + (dz / d) * VONG_RING.r;
+          look = LOOK;
+        } else if (kind === GROUP.open && s < DANCE_TO && gw > 0.64) look = this.stageLook;
+        else {
+          yaw = chat;
+          look = null;
+          if (!m.kid && h > 0.5) pose = POSE.talk;
+        }
+      }
       if (!seated) {
         if (m.phone && h < 0.22) pose = POSE.photo;
-        else if (m.phone && h < 0.45) hold = 1;
-        else if (!m.kid && h > 0.82) pose = POSE.talk;
+        else if (m.phone && h < 0.4) hold = 1;
         else if (m.kid && h > 0.86) pose = POSE.wave;
       } else if (m.phone && h < 0.2) hold = 1;
       if (hold) look = null;
       if (m.sparkler && s > -1500) hold = 1;
     } else if (s < 0) {
-      if (!seated) pose = m.phone ? POSE.photo : s > -3 && h < 0.6 ? POSE.cheer : POSE.point;
+      if (!seated) pose = s < -10 ? (m.phone && h < 0.4 ? POSE.photo : POSE.stand) : m.phone ? POSE.photo : s > -3 && h < 0.6 ? POSE.cheer : POSE.point;
       if (m.sparkler) hold = 1;
     } else if (s < 30) {
+      if (h < 0.45) look = this.sky;
+      const o = m.partner >= 0 ? this.plan.members[m.partner] : null;
       if (m.role === 'stool') pose = POSE.stool;
       else if (seated) pose = m.kid ? POSE.cheer : h < 0.5 ? POSE.wave : POSE.sit;
-      else if (m.partner >= 0 && s > 2 && s < 9) {
-        const o = this.crowdActors[m.partner];
-        yaw = a.yawTo(o.x, o.z);
-        pose = POSE.give;
+      else if (o && o.role === 'stand' && s > HUG_FROM && s < HUG_TO && Math.hypot(o.x - m.x, o.z - m.z) < 2.6) {
+        const p = this.crowdActors[m.partner];
+        const mx = (m.x + o.x) / 2;
+        const mz = (m.z + o.z) / 2;
+        const d = Math.hypot(m.x - mx, m.z - mz) || 1;
+        T.x = mx + ((m.x - mx) / d) * 0.3;
+        T.z = mz + ((m.z - mz) / d) * 0.3;
+        yaw = a.yawTo(p.x, p.z);
+        pose = POSE.hug;
         look = null;
       } else pose = m.phone && h < 0.3 ? POSE.photo : h < 0.75 ? POSE.cheer : POSE.wave;
       if (m.sparkler) hold = 1;
@@ -465,7 +744,14 @@ export class NyeLakeLife implements PeopleScene {
       yaw = Math.atan2(this.sky.x - m.x, this.sky.z - m.z) * 0.5 + m.yaw * 0.5;
       if (!seated) pose = m.phone && h < 0.5 ? POSE.photo : h > 0.93 ? POSE.cheer : h > 0.88 ? POSE.point : POSE.look;
       if (m.sparkler) hold = 1;
-    } else if (!seated) pose = h < 0.35 ? POSE.talk : m.phone && h < 0.5 ? POSE.photo : h > 0.92 ? POSE.wave : POSE.stand;
+    } else if (!seated) {
+      const chat = G.chat[k];
+      if (!Number.isNaN(chat) && h < 0.5) {
+        yaw = chat;
+        look = null;
+      }
+      pose = h < 0.35 ? POSE.talk : m.phone && h < 0.5 ? POSE.photo : h > 0.92 ? POSE.wave : POSE.stand;
+    }
     a.face(yaw);
     a.carry(hold, now);
     a.tilt(0);
@@ -576,6 +862,8 @@ export class NyeLakeLife implements PeopleScene {
   private stage(night: boolean, s: number, now: number, dt: number, f: MapFrame): void {
     const on = night && s >= NYE_TIMES.nightFrom && s < OFF_AT + 60;
     const dancing = on && s >= DANCE_FROM && s < DANCE_TO;
+    // (the mahori plays on for the roam vong round the medallion after the dancers' bow)
+    const playing = on && s >= DANCE_FROM && s < VONG_TO;
     const fy = LAKE_STAGE.yaw;
     for (let k = 0; k < this.dancers.length; k++) {
       const a = this.dancers[k];
@@ -645,12 +933,12 @@ export class NyeLakeLife implements PeopleScene {
         pose = POSE.stand;
       }
       this.onDeck(a, u, v, yaw, pose, walk, now, dt);
-      a.performing = dancing;
-      a.tilt(dancing ? 0.25 + 0.12 * Math.cos(now * 2.6 + k) : 0);
+      a.performing = playing;
+      a.tilt(playing ? 0.25 + 0.12 * Math.cos(now * 2.6 + k) : 0);
       a.lookAt(s >= 30 && s < NYE_TIMES.show ? this.sky : s < DANCE_TO ? null : this.boardAt, now + 1);
     }
     // (a phrase of music every few seconds while they play, from the ensemble's mat)
-    if (dancing && f.dt > 0 && now - this.phraseAt > 7.1) {
+    if (playing && f.dt > 0 && now - this.phraseAt > 7.1) {
       this.phraseAt = now;
       stagePt(MAHORI.u, MAHORI.v, UV);
       f.calls.push({ kind: 'pinpeat', x: UV.x, y: this.deck + 1, z: UV.z, gain: 0.8 });
@@ -709,6 +997,9 @@ export class NyeLakeLife implements PeopleScene {
     if (!this.shown) return;
     this.shown = false;
     this.rigs(false, 0);
+    sparksOut('lake');
+    this.inRing.fill(0);
+    this.away.fill(0);
     for (const r of this.boats) r.rig.hide();
     for (const r of this.candles) r.hide();
     if (this.netOut) {
