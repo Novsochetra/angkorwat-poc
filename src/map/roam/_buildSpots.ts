@@ -84,6 +84,12 @@ const THING = 0.3;
 const WATER_MARGIN = 0.6;
 /** Paths and trails are kept this far clear (m). */
 const PATH_MARGIN = 0.5;
+/**
+ * A fence run (`fence`) on his land's edge: its middle line may lie on the edge (its half depth past it), and it may
+ * stand by a path or the water's edge, as a fence along a lane or a bank does (its own blocks on neither): the edge
+ * runs half a metre from the Kulen trail on the west (m: the margins round them for a fence).
+ */
+const FENCE_EDGE = { land: 0.14, path: 0, water: 0.15 } as const;
 /** Footprints may touch this much (m: a fence's run against the next one's). */
 const TOUCH = 0.03;
 /** A point this near a piece he built is that piece's (the walk map's top there is his own posts and rails) (m). */
@@ -241,6 +247,8 @@ function pastLand(x: number, z: number): BuildReason {
   return 'plot';
 }
 const onLand = (x: number, z: number): BuildReason | null => (inPlot(x, z) ? null : pastLand(x, z));
+/** A fence's point: on his land or within its half depth past the edge (`FENCE_EDGE.land`). */
+const onLandFence = (x: number, z: number): BuildReason | null => (inPlot(x, z, -FENCE_EDGE.land) ? null : pastLand(x, z));
 const onHouse = (x: number, z: number): BuildReason | null => {
   const [lx, lz] = homeLocal(x, z);
   return atHouse(lx, lz) ? 'house' : null;
@@ -289,7 +297,12 @@ export function canBuild(world: RoamWorld, id: PieceId | 'foot', x: number, z: n
   _level = size?.level ?? LEVEL;
   const p = size ?? PIECES[id as PieceId];
   // (the land, the water, the paths and fields round it, his land's edge, the house)
-  let r = eachPoint(f, WATER_MARGIN, onWater) ?? eachPoint(f, PATH_MARGIN, onPath) ?? eachPoint(f, 0, onLand) ?? eachPoint(f, 0.1, onHouse);
+  const fence = id === 'fence';
+  let r =
+    eachPoint(f, fence ? FENCE_EDGE.water : WATER_MARGIN, onWater) ??
+    eachPoint(f, fence ? FENCE_EDGE.path : PATH_MARGIN, onPath) ??
+    eachPoint(f, 0, fence ? onLandFence : onLand) ??
+    eachPoint(f, 0.1, onHouse);
   if (r) return r;
   _h0 = world.field.heightAt(x, z);
   _lo = _hi = _h0;

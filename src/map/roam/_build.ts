@@ -141,7 +141,7 @@ let shiftDown = false;
 /** Shift was down as , or . went down (the fine turn: read on the key's own press, a quick chord is not missed). */
 let fineKey = false;
 /** Build mode now (worked out once a step): the spot (m), its turn, can it stand there, why not, the prompt. */
-const spot = { x: 0, y: 0, z: 0, yaw: 0, ok: false, reason: null as FurnReason | null, step: -1, prompt: null as string | null, snapped: false, ceil: Infinity, len: undefined as number | undefined };
+const spot = { x: 0, y: 0, z: 0, yaw: 0, ok: false, reason: null as FurnReason | null, step: -1, prompt: null as string | null, snapped: false, ceil: Infinity, len: undefined as number | undefined, edge: false };
 let stepN = 0;
 /** What E does by a piece (or a footprint building) now (once a step). */
 const near = { step: -1, piece: null as Built | null, foot: null as FootRec | null, sit: false, bed: null as BedPlace | null, prompt: null as string | null };
@@ -554,6 +554,46 @@ function shownDeg(id: PieceId, yaw: number): number {
 }
 
 /** Build mode's spot and prompt now (once a step). */
+/** A fence run this near his land's edge (m, its middle to the line) and this close to along it (rad) snaps onto it. */
+const EDGE_SNAP = { m: 0.55, turn: (15 * Math.PI) / 180 };
+/**
+ * A fence run near a side of his land (build/plot.ts `PLOT_CORNERS`, the cord he sees while he builds) and turned
+ * along it: its middle line onto the side's, turned exactly along it, kept within the side's length (the placing
+ * rules let a fence's middle lie on the edge: _buildSpots.ts `FENCE_EDGE`). True: snapped (into `spot`).
+ */
+function snapEdge(): boolean {
+  const hw = (spot.len ?? PIECES.fence.w) / 2;
+  // (the run's direction: local x along (cos yaw, −sin yaw))
+  const dx = Math.cos(spot.yaw);
+  const dz = -Math.sin(spot.yaw);
+  let best = EDGE_SNAP.m;
+  let hit: { x: number; z: number; yaw: number } | null = null;
+  for (let i = 0; i < PLOT_CORNERS.length; i++) {
+    const [ax, az] = PLOT_CORNERS[i];
+    const [bx, bz] = PLOT_CORNERS[(i + 1) % PLOT_CORNERS.length];
+    const len = Math.hypot(bx - ax, bz - az);
+    const ux = (bx - ax) / len;
+    const uz = (bz - az) / len;
+    // (along it, either way round)
+    const along = Math.abs(dx * ux + dz * uz);
+    if (along < Math.cos(EDGE_SNAP.turn)) continue;
+    const t = (spot.x - ax) * ux + (spot.z - az) * uz;
+    const off = Math.abs((spot.x - ax) * -uz + (spot.z - az) * ux);
+    if (off >= best || t < -hw || t > len + hw) continue;
+    const tt = len >= hw * 2 ? Math.min(len - hw, Math.max(hw, t)) : len / 2;
+    const yaw = Math.atan2(-uz, ux);
+    // (the way round nearer the one he had: its front stays his)
+    const flip = dx * ux + dz * uz < 0;
+    best = off;
+    hit = { x: ax + ux * tt, z: az + uz * tt, yaw: flip ? yaw + Math.PI : yaw };
+  }
+  if (!hit) return false;
+  spot.x = hit.x;
+  spot.z = hit.z;
+  spot.yaw = Math.atan2(Math.sin(hit.yaw), Math.cos(hit.yaw));
+  return true;
+}
+
 function placingNow(ctx: RoamCtx): void {
   if (spot.step === stepN || !placing || !env) return;
   spot.step = stepN;
@@ -569,6 +609,8 @@ function placingNow(ctx: RoamCtx): void {
   // (a run he moves keeps its own length unless it snaps to fill a gap)
   spot.len = moving?.len;
   spot.snapped = placing === 'fence' && snapFence(raw);
+  // (a fence near his land's edge and along it: on the edge's line)
+  spot.edge = placing === 'fence' && !spot.snapped && snapEdge();
   spot.ceil = Infinity;
   let r: FurnReason | null;
   if (isFurniture(placing)) {
@@ -1421,7 +1463,7 @@ registerAddon({
           state: () => ({
             pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3), ...(p.len !== undefined ? { len: +p.len.toFixed(3) } : {}) })),
             version: BUILT.version,
-            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, moving: moving?.uid ?? null, len: spot.len !== undefined ? +spot.len.toFixed(3) : null, ghost: !!ghost?.shown } : null,
+            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, edge: spot.edge, moving: moving?.uid ?? null, len: spot.len !== undefined ? +spot.len.toFixed(3) : null, ghost: !!ghost?.shown } : null,
             moveMode: MoveMode.on ? { aimed: MoveMode.aimed.piece?.uid ?? (MoveMode.aimed.foot ? `foot:${MoveMode.aimed.foot.uid}` : null), why: MoveMode.aimed.why } : null,
             near: near.piece || near.foot ? { uid: (near.piece ?? near.foot)!.uid, prompt: near.prompt, sit: near.sit } : null,
             work: BuildWork.now,

@@ -473,7 +473,9 @@ guide, with every add-on's keys and URL values for shots, is
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
     Fence runs join: a run fills the gap between two fence ends 0.3‥3 m apart, and stops on another
-    run's line at a corner (`snapFence` in `roam/_build.ts`; a run's own length `Built.len`).
+    run's line at a corner (`snapFence` in `roam/_build.ts`; a run's own length `Built.len`). Near his
+    land's edge and along it, a run lies on the edge's line (`snapEdge`; `_buildSpots.ts` `FENCE_EDGE`:
+    a fence's middle may lie on the edge, by a path, 0.15 m from water).
   - Moving what he built: the card's "Move your things" row → move mode (`roam/_buildMove.ts`):
     aim at a piece (gold), E picks it up, its ghost goes with him, E puts it down free, Esc puts it
     back (`BUILD.move`, the `moved` event; `buildmove=1|<uid>`; addons.md "Moving what he built").

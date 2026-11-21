@@ -3038,7 +3038,13 @@ sounds `audio/_build.ts`.
   end at both sides at whatever angle the gap has (`snapFence` → `closeFence`; first, before a
   run going on), no guide; and a run going on from an end **stops on another free end's line**
   where that line, out to 6 m past its end, crosses it at 30° or more (`meetLine`: the corner
-  they make; the next run closes it square). The materials are a whole run's. The turn
+  they make; the next run closes it square). **On his land's edge** (November 2026): a run
+  within 0.55 m of a side of his land (the cord he sees while he builds) and within 15° of along
+  it, not snapped to a fence end, lies on the side's line, turned exactly along it, kept within the
+  side's length (`snapEdge`, `state().placing.edge`); the placing rules let a fence's middle line lie
+  on the edge (its half depth past it, `FENCE_EDGE` in `_buildSpots.ts`) and let it stand by a path
+  (no margin; the trail's tread is still never under it) or 0.15 m from the water, so a fence can
+  close his land beside the Kulen trail. The materials are a whole run's. The turn
   shows: "E  Build here 45°" (the phone's Use button reads "សង់នៅទីនេះ ៤៥°") and in the
   touch bar between ⟲ ⟳ and the other buttons. "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
   the row, before a hammock, the dog, the house's doors) pays riel for what he lacks
