@@ -185,7 +185,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
     const out = Math.atan2(x - SQUARE.x, z - SQUARE.z);
     tallPole(b, bodies, glows, wires, x, g, z, poleTop, out, src);
     field.occupy(x - 0.5, z - 0.5, x + 0.5, z + 0.5);
-    pools.add(x, z, 5.5, 0xffa850, 0.24);
+    pools.add(x, z, 4.2, 0xffa850, 0.2);
     poles.push({ x, y: g + poleTop - 0.15, z, th });
   }
 

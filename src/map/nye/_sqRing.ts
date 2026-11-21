@@ -98,7 +98,7 @@ export function buildNyeRing(x: number, y: number, z: number, r: number, low: bo
       // A slow breath (about 6 s), deeper on the event night.
       const breathe = 1 + (0.08 + 0.08 * event) * Math.sin(t * (1.05 + 0.25 * event));
       // Faint gold by day (an inlay catching the light), bright gold lines at night: only their hearts reach the bloom.
-      u.uLevel.value = (0.12 + n * n * (1.15 + 0.5 * event)) * breathe;
+      u.uLevel.value = (0.12 + n * n * (0.95 + 0.4 * event)) * breathe;
       u.uTime.value = t % 600;
       u.uEvent.value = event;
       mesh.visible = u.uLevel.value > 0.01;
