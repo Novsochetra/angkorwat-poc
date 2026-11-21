@@ -2554,7 +2554,8 @@ l-ref `cam=-324,18,-88,-360,6,-36,55`; fireworks `fireworks=<s>&cam=384,11,-248,
   shader; event night only, within 260 m, 55 % on medium, none on low.
 - **Cost** (GPU, `npm run perf`, before → after): nye high 309 → 308 draws, 7.1 → 6.8 ms; nyecrowd high 306 → 307,
   6.0 → 6.4 ms; nyeover high 611 → 612, 12.6 → 13.4 ms; nyelake high 169 → 172, 4.3 → 4.9 ms; nyelakefw high 128 → 128;
-  low: nye 253 → 251, nyeover 566 → 567 (still over the phone overview's 520), nyelake 124 → 126, nyelakefw 116 → 115.
+  low: nye 253 → 251, nyeover 566 → 534 (the map alone 530), nyelake 124 → 126, nyelakefw 116 → 115; phone: nyeover
+  517 (the budget 520), nye 265, nyelake 152.
   `npm run perf -- only=nyelake,nyelakefw` measure the lake venue.
 
 ## World and scale
