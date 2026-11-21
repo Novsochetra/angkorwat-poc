@@ -32,6 +32,7 @@ import { graphicsNow } from '../graphics';
 import { BLESS_SCRIPT } from '../roam/_blessingHooks';
 import { ROAM_SCALE } from '../roam/types';
 import { SlotMarks } from './_things';
+import { GROUND_LIGHT } from './_groundLight';
 
 /**
  * The people of the map: one blocky person model (boxes on 15 bones, in the
@@ -1807,7 +1808,7 @@ interface BoneUniforms {
  */
 function inject(shader: WebGLProgramParametersWithUniforms, u: CrowdUniforms & BoneUniforms, colour: boolean, bones: boolean): void {
   Object.assign(shader.uniforms, u);
-  const pars = colour ? `\nuniform sampler2D uPPal;\nuniform float uPGlow;\nvarying vec3 vPColor;\nvarying vec3 vPGlow;\n` : '';
+  const pars = colour ? `\nuniform sampler2D uPPal;\nuniform float uPGlow;\nuniform sampler2D uPGround;\nuniform vec4 uPGroundAt;\nvarying vec3 vPColor;\nvarying vec3 vPGlow;\n` : '';
   shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${GLSL_WORN}${bones ? GLSL_FETCH : GLSL_SKIN}${pars}`);
   // (a box not worn, or a person hidden, folds to a point before any posing)
   const pose = bones
@@ -1851,6 +1852,13 @@ function inject(shader: WebGLProgramParametersWithUniforms, u: CrowdUniforms & B
   // (the person's own row of colours: aPCh2.w)
   vPColor = texelFetch(uPPal, ivec2(pSlot, int(aPCh2.w + 0.5)), 0).rgb;
   vPGlow = pSlot == ${SLOT.flame} ? vPColor * uPGlow : vec3(0.0);
+  // The light lying on the land at their feet (_groundLight.ts: the New Year square's lamp pools; off, not read).
+  if (uPGroundAt.w > 0.0) {
+    vec2 pGUv = ((modelMatrix * instanceMatrix * vec4(pPos, 1.0)).xz - uPGroundAt.xy) * uPGroundAt.z;
+    vec4 pG = texture2D(uPGround, pGUv);
+    float pGIn = step(0.0, pGUv.x) * step(pGUv.x, 1.0) * step(0.0, pGUv.y) * step(pGUv.y, 1.0);
+    vPGlow += vPColor * vec3(1.0, 0.72, 0.45) * ((pG.r + pG.g) * pGIn * uPGroundAt.w);
+  }
   // Undersides a little darker (no bounce light there).
   vPColor *= 0.84 + 0.16 * smoothstep(-1.0, 0.2, normal.y);`,
       )
@@ -2133,7 +2141,8 @@ export class Crowd {
     };
     const type = boneType(opts.renderer);
     const bones = type !== null;
-    const u = { ...this.uniforms, uPBones: this.boneTex };
+    // (the light on the land at their feet: one for the map, shared by every crowd)
+    const u = { ...this.uniforms, ...GROUND_LIGHT, uPBones: this.boneTex };
     const material = crowdMaterial(name, u, bones);
     const depth = new MeshDepthMaterial();
     depth.name = `${name}:depth`;

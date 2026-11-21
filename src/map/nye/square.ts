@@ -25,6 +25,10 @@ import { buildSquareGlow } from './_sqGlow';
 import { flickerFlames } from './_sqLightFlicker';
 import { growMeadow } from './_sqMeadow';
 import { buildSquareLife } from './_sqLife';
+import { GROUND_LIGHT } from '../people/_groundLight';
+
+/** How much the lamps' pools on the ground light the people standing in them (× the light map's own light). */
+const PEOPLE_FILL = 0.35;
 
 /**
  * The festival square at Phnom Kulen's foot (AWP-35, docs/discussion/new-year-online.md; where: plan.ts), all
@@ -170,6 +174,8 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
       ring.update(n, event, now);
       garden.update(n, lit, event > 0);
       // (a soft fill: the lamps' own pools make the light, not one wash over the floor)
+      // (the lamps' pools on the people standing in them, not on low: people/_groundLight.ts)
+      GROUND_LIGHT.uPGroundAt.value.w = low ? 0 : PEOPLE_FILL * lit * (1 + 0.2 * event);
       ringLamp.intensity = 60 * lit * (1 + 0.3 * event);
       gateLamp.intensity = 45 * lit;
       sqGlow.update(f);

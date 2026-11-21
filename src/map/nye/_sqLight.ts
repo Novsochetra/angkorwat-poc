@@ -18,6 +18,7 @@ import {
   ZeroFactor,
 } from 'three';
 import { CELL, type HeightField } from '../heightfield';
+import { GROUND_LIGHT } from '../people/_groundLight';
 import { hazeUniforms } from '../sky/haze';
 import { onSquare } from './plan';
 import { TOP } from './_sqFloor';
@@ -243,6 +244,9 @@ export class LightWash {
       uMap: { value: map },
       uMapAt: { value: new Vector3(MAP.x0, MAP.z0, 1 / MAP.size) },
     };
+    // (the same light on the people standing in it: people/_groundLight.ts; its strength set each frame by square.ts)
+    GROUND_LIGHT.uPGround.value = map;
+    GROUND_LIGHT.uPGroundAt.value.set(MAP.x0, MAP.z0, 1 / MAP.size, 0);
     const material = new ShaderMaterial({
       name,
       transparent: true,
