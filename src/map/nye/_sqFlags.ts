@@ -45,13 +45,14 @@ export interface WayIn {
 
 /** The cloth flies toward −x (west). */
 const DIR = -Math.PI / 2;
-/** Waving at about 2.4 rad/s (a whole number of turns in the kit's period); the bunting quicker. */
+/** Waving at about 2.4 rad/s (a whole number of turns in the kit's period), the ripple running down the cloth `DOWN` rad a metre; the bunting quicker. */
 const WAVE = perPeriod(2.4);
+const DOWN = 0.6;
 const FLUTTER = perPeriod(3.6);
 const POLE = [0xe6e2d8, 0xdcd8ce, 0xeeeae0];
 const WIRE = 0x2a2420;
 
-export function raiseFlags(o: WayIn): { blocks: number; kitBoxes: number } {
+export function raiseFlags(o: WayIn): { blocks: number; kitBoxes: number; lights: [number, number][] } {
   const { object, fb, b, wb, field, u, lamps, bulbs, glow, low } = o;
   const src = traceSource();
   const b0 = b.boxes.length + wb.boxes.length;
@@ -133,7 +134,7 @@ export function raiseFlags(o: WayIn): { blocks: number; kitBoxes: number } {
   console.info(
     `[map] nye way in: ${blocks + avenue.pavers} blocks (pavers ${avenue.pavers}, avenue ${avenue.blocks}, poles ${blocks - avenue.blocks}) · ${avenue.lights.length} lamps and fires · flags kit ${km.boxes} boxes`,
   );
-  return { blocks: blocks + avenue.pavers, kitBoxes: km.boxes };
+  return { blocks: blocks + avenue.pavers, kitBoxes: km.boxes, lights: avenue.lights };
 }
 
 /** A slim white flagpole with a gilt knob (its foot on the land); returns its top (m). */
@@ -173,7 +174,7 @@ export function flag(kit: Kit, x: number, top: number, z: number, dir: number, w
       while (r1 < rows && at(col, r1) === color) r1++;
       const hh = (r1 - r0) * dv;
       const white = color === FLAG_WHITE;
-      kit.box(cx, top - r0 * dv - hh / 2, cz, du + 0.002, hh + 0.002, white ? 0.045 : 0.025, color, { yaw, anim: ANIM.wave, a: [big ? 0.05 : 0.08, u0, WAVE], b: [phase, 0, 0, 0] });
+      kit.box(cx, top - r0 * dv - hh / 2, cz, du + 0.002, hh + 0.002, white ? 0.045 : 0.025, color, { yaw, anim: ANIM.wave, a: [big ? 0.065 : 0.1, u0, WAVE], b: [phase, DOWN, r0 * dv, 0] });
       r0 = r1;
     }
   }
