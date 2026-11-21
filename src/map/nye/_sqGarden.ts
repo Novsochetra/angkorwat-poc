@@ -10,6 +10,7 @@ import { beam, leaf, log, type P3 } from '../veg/plantKit';
 import { SQUARE } from './plan';
 import { AVENUE } from './_sqWalk';
 import { khmerLamp, LATERITE, PAVER, pick } from './_sqKit';
+import { WaterLights } from './_lkReflect';
 
 /**
  * The festival square's garden and water (AWP-35; the owner: "the colour of blossoms and water is missing"):
@@ -17,7 +18,8 @@ import { khmerLamp, LATERITE, PAVER, pick } from './_sqKit';
  * - **flowering trees** round the square, behind the stage and over the Kulen stream (`NYE_TREES`, spots kept
  *   stable: the square's string lights and lanterns hang in them): crape myrtle (Lagerstroemia, ត្របែកព្រៃ) in
  *   purple and lilac pink, the pink trumpet tree (Tabebuia rosea) nearly bare under its blossom, and frangipani
- *   (ចំប៉ា, champa) by the gate, white with yellow hearts on forked grey branches; at night each crown glows softly
+ *   (ចំប៉ា, champa) by the gate: forked grey-brown branches, rosettes of long glossy leaves at their tips and clusters of
+ *   small white flowers with yellow hearts nestled in them (never a disc on top: from afar it read as a lamp); at night each crown glows softly
  *   (halos in its colours and a few lit panicles) and petals lie on the ground under them;
  * - **flower beds** along the square's edge and the gate's walk: marigolds, red cockscomb, pink periwinkle, purple
  *   torenia in patches; two **bougainvillea arches** over the walk outside the gate;
@@ -28,9 +30,10 @@ import { khmerLamp, LATERITE, PAVER, pick } from './_sqKit';
  *   Kulen pool, at night; many more on the event night (clock.ts `nightHeld`). No sky lanterns (Thai).
  *
  * Blocks: the trees, beds, arches and the ghat go into the square's builder (its families: no new draw). The rest
- * is the festival kit's way: one kit (petals, panicles, lily pads, lotus, candles), one glow (crowns, candles and
- * their streaks, the lamps' streaks), and the event night's extra candles in a kit and a glow of their own, drawn
- * only that night: 2 draws (4 on the event night). Nothing here is in the walk map but the voxels (the kit is not).
+ * is the festival kit's way: one kit (petals, panicles, lily pads, lotus, candles), one glow (the crowns' halos), the
+ * water lights (`_lkReflect.ts` `WaterLights`, as the lake's: the candles' halos and every reflection on the stream and
+ * the pool — long only at a grazing angle, a short soft patch seen from above), and the event night's extra candles in
+ * a kit of their own, drawn only that night: 3 draws (4 on the event night). Nothing here is in the walk map but the voxels (the kit is not).
  */
 
 export type TreeKind = 'myrtle' | 'trumpet' | 'champa';
@@ -85,12 +88,14 @@ const BLOOM: Record<Bloom, readonly number[]> = {
 };
 /** The leaves showing between the blossom. */
 const LEAF = [0x2a4a30, 0x355e36, 0x497534, 0x5f8a37];
-/** Crape myrtle's smooth mottled bark, the trumpet tree's grey, frangipani's pale grey. */
+/** Crape myrtle's smooth mottled bark, the trumpet tree's grey, frangipani's grey-brown (a bark, not a stone post). */
 const BARK: Record<TreeKind, readonly number[]> = {
   myrtle: [0x9a8068, 0xae9478, 0x8a705a, 0xb8a084],
   trumpet: [0x6e6458, 0x7a6f62, 0x625a50],
-  champa: [0x9c968a, 0xa8a296, 0x8e887c],
+  champa: [0x7a6a5a, 0x857463, 0x6c5e50, 0x8f7e6a],
 };
+/** Frangipani's leaves: a deep glossy green, long, in rosettes at the branch tips. */
+const CHAMPA_LEAF = [0x2e5a2c, 0x376a30, 0x2a5028, 0x427834];
 /** Night halos round the crowns. */
 const HALO: Record<Bloom, number> = { purple: 0xb070ff, pink: 0xff7ab0, white: 0xffe8c0 };
 
@@ -139,7 +144,8 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
   const blossom = new Kit();
   const glow = new Glow();
   const eventKit = new Kit();
-  const eventGlow = new Glow();
+  /** The candles' halos and every light's reflection on the stream and the pool (the lake's water lights: one draw). */
+  const water = new WaterLights();
 
   const v0 = b.boxes.length;
   // ── The trees ──
@@ -220,7 +226,8 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
     // A lamp every 8 m on the terrace, its warm streak on the water.
     if (ri % 4 === 1) {
       khmerLamp(b, xw - 2.6, top + 0.12, z, 1.3, 40 + lampN++, src, lamps, glow, 2.0);
-      glow.add(row.mid + row.half * 0.55, wy, z, 0xffa850, 9, { mode: GLOW_MODE.streak, level: 2.2, width: 0.45 });
+      // (its reflection from the water's edge before it: the lamp's flame stands ≈ 2 m over the water)
+      water.streak(xw + 0.4, wy, z, top + 0.12 + 2.0 - wy, undefined, { level: 1.4, width: 0.4 });
     }
     // Lily pads and lotus at the water's edge.
     const n = low ? 2 : 3;
@@ -248,7 +255,7 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
 
   // ── Floating lotus candles: the stream (drifting south with it) and the pool (wandering) ──
   let ci = 0;
-  const streamCandles = (k: Kit, gl: Glow, per: number, seed: number) => {
+  const streamCandles = (k: Kit, gl: Glow, per: number, seed: number, event: boolean) => {
     for (let s = 0; s + 6 < stream.length; s += 6) {
       const r0 = stream[s];
       const r1 = stream[s + 6];
@@ -257,11 +264,11 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
       const dz = (r1.z - r0.z) / len;
       for (let i = 0; i < per; i++, ci++) {
         const side = (hash3(ci, seed, 1, 81) - 0.5) * Math.max(0.5, r0.half - 1.6);
-        candle(k, gl, r0.mid + side, r0.wy, r0.z, { a: [1, hash3(ci, seed, 2, 81), len], b: [dx, dz, 160 + 120 * hash3(ci, seed, 3, 81), 0] }, ci);
+        candle(k, gl, r0.mid + side, r0.wy, r0.z, { a: [1, hash3(ci, seed, 2, 81), len], b: [dx, dz, 160 + 120 * hash3(ci, seed, 3, 81), 0] }, ci, { lights: water, event });
       }
     }
   };
-  const poolCandles = (k: Kit, gl: Glow, n: number, seed: number) => {
+  const poolCandles = (k: Kit, gl: Glow, n: number, seed: number, event: boolean) => {
     for (let i = 0; i < n * 3 && n > 0; i++, ci++) {
       const a = hash3(ci, seed, 4, 82) * Math.PI * 2;
       const u = Math.sqrt(hash3(ci, seed, 5, 82)) * 0.62;
@@ -269,20 +276,20 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
       const z = POOL.z + Math.sin(a) * POOL.rz * u;
       const wy = field.waterAt(x, z);
       if (wy === null || z < -307) continue;
-      candle(k, gl, x, wy, z, { a: [0, hash3(ci, seed, 6, 82), 0.3 + 0.5 * hash3(ci, seed, 7, 82)], b: [0, 0, perPeriod(0.02 + 0.05 * hash3(ci, seed, 8, 82)), 0] }, ci);
+      candle(k, gl, x, wy, z, { a: [0, hash3(ci, seed, 6, 82), 0.3 + 0.5 * hash3(ci, seed, 7, 82)], b: [0, 0, perPeriod(0.02 + 0.05 * hash3(ci, seed, 8, 82)), 0] }, ci, { lights: water, event });
       if (--n <= 0) break;
     }
   };
-  streamCandles(kit, glow, low ? 3 : 5, 1);
-  poolCandles(kit, glow, low ? 6 : 10, 2);
-  streamCandles(eventKit, eventGlow, low ? 3 : 6, 3);
-  poolCandles(eventKit, eventGlow, low ? 8 : 16, 4);
+  streamCandles(kit, glow, low ? 3 : 5, 1, false);
+  poolCandles(kit, glow, low ? 6 : 10, 2, false);
+  streamCandles(eventKit, glow, low ? 3 : 6, 3, true);
+  poolCandles(eventKit, glow, low ? 8 : 16, 4, true);
 
   let halos: ReturnType<Glow['build']> | null = null;
-  let extraHalos: ReturnType<Glow['build']> | null = null;
+  let waterLights: ReturnType<WaterLights['build']> | null = null;
   let extraKit: ReturnType<Kit['build']> | null = null;
   console.info(
-    `[map] nye garden: ${b.boxes.length - v0} blocks, ${trees.length} trees, ${beds.length} bed runs, ${stream.length} bank rows, blossom ${blossom.count}, kit ${kit.count} (+${eventKit.count} on the night), glows ${glow.count} (+${eventGlow.count})`,
+    `[map] nye garden: ${b.boxes.length - v0} blocks, ${trees.length} trees, ${beds.length} bed runs, ${stream.length} bank rows, blossom ${blossom.count}, kit ${kit.count} (+${eventKit.count} on the night), glows ${glow.count}, water lights ${water.count}`,
   );
   return {
     trees,
@@ -302,9 +309,9 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
       extraKit = eventKit.build('nye:candles', u);
       extraKit.mesh.castShadow = false;
       bound(extraKit.mesh, s);
-      extraHalos = eventGlow.build('nye:candles', u);
-      bound(extraHalos.mesh, s);
-      return [bm.mesh, km.mesh, halos.mesh, extraKit.mesh, extraHalos.mesh];
+      waterLights = water.build('nye:garden', u);
+      bound(waterLights.mesh, s);
+      return [bm.mesh, km.mesh, halos.mesh, extraKit.mesh, waterLights.mesh];
     },
     update(night, lit, event) {
       if (halos) {
@@ -313,10 +320,7 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
       }
       const extra = event && lit > 0;
       extraKit?.show(extra);
-      if (extraHalos) {
-        extraHalos.level.value = lit;
-        extraHalos.show(extra);
-      }
+      waterLights?.update(lit, event ? 1 : 0);
       void night;
     },
   };
@@ -454,7 +458,7 @@ export function champa(b: VoxelBuilder, kit: Kit, glow: Glow, field: HeightField
   const bark = BARK.champa;
   const bk = (i: number) => bark[Math.floor(rnd(70 + i) * bark.length) % bark.length];
   const fork: P3 = [x, g + 1.5, z];
-  log(b, [x, g - 0.2, z], fork, 0.5, bk(0), 'mapBark', 1, src);
+  log(b, [x, g - 0.2, z], fork, 0.56, bk(0), 'mapBark', 1, src);
   const tips: P3[] = [];
   const n = 5;
   for (let s = 0; s < n; s++) {
@@ -470,23 +474,26 @@ export function champa(b: VoxelBuilder, kit: Kit, glow: Glow, field: HeightField
   }
   const tones = BLOOM.white;
   for (const [ti, tip] of tips.entries()) {
-    const leaves = low ? 4 : 7;
+    // A rosette of long glossy leaves at the tip: some reaching up, most out and drooping (the tree's crown of green).
+    const leaves = low ? 5 : 9;
     for (let l = 0; l < leaves; l++) {
       const az = (l / leaves) * Math.PI * 2 + rnd(30 + ti);
-      leaf(b, tip, { len: 0.85, wid: 0.24, az, el: 0.45 - 0.3 * (l % 2), color: LEAF[1 + (l % 3)], segs: low ? 1 : 2, rib: false, src });
+      leaf(b, tip, { len: 1.05 + 0.2 * rnd(50 + l), wid: 0.3, az, el: [0.75, 0.35, 0.05][l % 3], bend: 0.45, color: CHAMPA_LEAF[(l + ti) % CHAMPA_LEAF.length], segs: low ? 1 : 2, src });
     }
-    // The flowers: a cluster of five-petalled whites (each two crossed slabs) with yellow hearts, standing on the tuft.
-    const fl = low ? 3 : 6;
+    // The flowers: a cluster nestled in the rosette, five-petalled whites (each two crossed slabs, small) with yellow
+    // hearts — not a disc on top: only a soft glow of their own at night.
+    const fl = low ? 4 : 9;
     for (let f = 0; f < fl; f++) {
       const a = (f / fl) * Math.PI * 2 + rnd(40 + ti);
-      const fx = tip[0] + Math.cos(a) * 0.24;
-      const fz = tip[2] + Math.sin(a) * 0.24;
-      const fy = tip[1] + 0.22 + 0.1 * (f % 2);
-      kit.box(fx, fy, fz, 0.3, 0.06, 0.3, tones[4 + (f % 2)], { yaw: a, glow: 0.22 });
-      kit.box(fx, fy + 0.015, fz, 0.3, 0.06, 0.3, tones[3], { yaw: a + Math.PI / 4, glow: 0.22 });
-      kit.box(fx, fy + 0.05, fz, 0.1, 0.03, 0.1, 0xf3c23a, { glow: 0.25 });
+      const rr = f === 0 ? 0 : 0.12 + 0.06 * (f % 2);
+      const fx = tip[0] + Math.cos(a) * rr;
+      const fz = tip[2] + Math.sin(a) * rr;
+      const fy = tip[1] + 0.16 + 0.07 * (f % 3);
+      kit.box(fx, fy, fz, 0.2, 0.045, 0.2, tones[4 + (f % 2)], { yaw: a, pitch: 0.25 * (f % 2), glow: 0.12 });
+      kit.box(fx, fy + 0.012, fz, 0.2, 0.045, 0.2, tones[3], { yaw: a + Math.PI / 4, glow: 0.12 });
+      kit.box(fx, fy + 0.04, fz, 0.08, 0.03, 0.08, 0xf3c23a, { glow: 0.16 });
     }
-    if (ti % 3 === 0) glow.add(tip[0], tip[1] + 0.2, tip[2], HALO.white, 2.2, { level: 0.12 });
+    if (ti % 4 === 0) glow.add(tip[0], tip[1] + 0.2, tip[2], HALO.white, 1.6, { level: 0.05 });
   }
   return { low: g + t.h * 0.55, top: g + t.h };
 }
@@ -624,16 +631,23 @@ export function lotus(kit: Kit, x: number, wy: number, z: number, i: number, bud
 }
 
 /**
- * A floating lotus candle (បណ្តែតប្រទីប: a banana-leaf boat, lotus petals, a candle and its flame), drifting; its
- * halo and its streak on the water drift with it. Night only.
+ * A floating lotus candle (បណ្តែតប្រទីប: a banana-leaf boat, lotus petals, a candle and its tiny flame), drifting; its
+ * halo and its reflection on the water drift with it. Night only. With `water` (the venue's water lights,
+ * `_lkReflect.ts` `WaterLights`) the reflection is the lake's own: long only seen at a grazing angle, a short soft patch
+ * looked down on (from over the square a rod of light stood on the water); else the festival glow's streak as before.
  */
-export function candle(kit: Kit, glow: Glow, x: number, y: number, z: number, drift: Drift, i: number): void {
+export function candle(kit: Kit, glow: Glow, x: number, y: number, z: number, drift: Drift, i: number, water?: { lights: WaterLights; event: boolean }): void {
   const d = { show: SHOW.night, anim: ANIM.drift, a: drift.a, b: drift.b };
   const petal = hash3(i, 7, 1, 55) < 0.6 ? 0xf29ab8 : 0xf6f0e4;
   kit.box(x, y + 0.05, z, 0.46, 0.1, 0.46, 0x5f9a3a, d);
   kit.box(x, y + 0.13, z, 0.36, 0.12, 0.36, petal, { ...d, yaw: Math.PI / 4 });
   kit.box(x, y + 0.24, z, 0.05, 0.14, 0.05, 0xf4ecd8, d);
-  kit.box(x, y + 0.35, z, 0.06, 0.09, 0.06, 0xffc070, { ...d, glow: 2.2 });
+  kit.box(x, y + 0.34, z, 0.045, 0.07, 0.045, 0xffd080, { ...d, glow: water ? 1.4 : 2.2 });
+  if (water) {
+    water.lights.halo(x, y + 0.36, z, 0xffa850, 0.9, { drift, level: 0.32, event: water.event });
+    water.lights.streak(x, y, z, 0.36, undefined, { drift, level: 1.2, width: 0.24, event: water.event });
+    return;
+  }
   glow.add(x, y + 0.36, z, 0xffa850, 1.4, { drift, level: 0.55 });
   glow.add(x, y + 0.01, z, 0xffa040, 6, { drift, mode: GLOW_MODE.streak, level: 1.8, width: 0.3 });
 }

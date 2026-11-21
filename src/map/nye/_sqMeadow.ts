@@ -8,7 +8,7 @@ import { beam, type P3 } from '../veg/plantKit';
 import { RAMPS, type Proto } from '../veg/proto';
 import { broadleaf, bush } from '../veg/species';
 import { GATE, onSquare, SQUARE, STAGE } from './plan';
-import { LATERITE, PAVER, pick } from './_sqKit';
+import { PAVER, pick } from './_sqKit';
 import { SALA } from './_sqSala';
 import { ARCH, AVENUE, onAvenue } from './_sqWalk';
 
@@ -354,13 +354,17 @@ function stonePaths(field: HeightField): Line[] {
   return out;
 }
 
-/** Flat stones every ≈ 0.85 m along a path, a little to either side, off trails' treads, water and what is built. */
+/**
+ * Flat stones every ≈ 0.9 m along a path, a little to either side, off trails' treads, water and what is built: pale
+ * sandstone, each a rounded stone (two slabs turned apart), bedded in the grass with its top a hand's breadth over it,
+ * never a dark slab dropped on the meadow.
+ */
 function layStones(fb: VoxelBuilder, field: HeightField, p: Line, seed: number, src: SourceTrace | undefined): void {
   for (let i = 1; i < p.length; i++) {
     const [ax, az] = p[i - 1];
     const [bx, bz] = p[i];
     const L = Math.hypot(bx - ax, bz - az);
-    const n = Math.max(1, Math.round(L / 0.85));
+    const n = Math.max(1, Math.round(L / 0.9));
     const ux = (bx - ax) / L;
     const uz = (bz - az) / L;
     for (let s = 0; s < n; s++) {
@@ -370,9 +374,13 @@ function layStones(fb: VoxelBuilder, field: HeightField, p: Line, seed: number, 
       const z = az + uz * (s + 0.5) * (L / n) + ux * off;
       const c = field.index(x, z);
       if (c < 0 || field.trail[c] === 2 || field.waterAt(x, z) !== null || onSquare(x, z, 0.5) || onAvenue(x, z, 0.5)) continue;
-      const w = 0.5 + 0.18 * h;
-      const tone = h < 0.6 ? pick(PAVER, x, z, 1, 618) : pick(LATERITE, x, z, 2, 618);
-      fb.box(x, field.heightAt(x, z) + 0.035, z, w, 0.07, w * (0.78 + 0.2 * hash3(seed, i, s, 619)), tone, 'mapStone', { src, ry: Math.atan2(ux, uz) + (h - 0.5) * 0.7, shade: 0.92 + 0.12 * h });
+      const w = 0.46 + 0.16 * h;
+      const tone = pick(PAVER, x, z, 1, 618);
+      const ry = Math.atan2(ux, uz) + (h - 0.5) * 0.7;
+      const g = field.heightAt(x, z);
+      const d = w * (0.8 + 0.18 * hash3(seed, i, s, 619));
+      fb.box(x, g - 0.005, z, w, 0.05, d, tone, 'mapStone', { src, ry, shade: 0.9 + 0.1 * h });
+      fb.box(x, g - 0.008, z, w * 0.78, 0.05, d * 1.12, tone, 'mapStone', { src, ry: ry + Math.PI / 4, shade: 0.88 + 0.1 * h });
     }
     // (a narrow strip kept for the stones: the vegetation's trees keep off)
     for (let s = 0; s <= n; s += 2) {
