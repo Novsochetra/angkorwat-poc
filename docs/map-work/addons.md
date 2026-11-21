@@ -3071,10 +3071,25 @@ sounds `audio/_build.ts`.
   draws it there, its light, seat, hammock and prayer spot go with it, `BuildUses.forget`); **Esc**
   ("Put it back") leaves it where it was. Either way move mode goes on for the next; Esc there (✕,
   ○) ends it, as walking 8 m off his land, another mode or another row of the card. The touch bar
-  shows only its card and ✕ buttons until he carries one. Footprint buildings are not moved (the
-  block layer's: take one down and draw it again). URL: `buildmove=1` (the mode on),
-  `buildmove=<uid>` (that piece carried); `__build.moveMode(on)`, `__build.move(uid)` (null, or
-  why not), `state().moveMode` (`aimed`, `why`), `state().placing.moving`.
+  shows only its card and ✕ buttons until he carries one.
+  **Footprint buildings move too** (a stilt house, a shed, a fence line: November 2026): aimed at
+  as a piece is (each part's box from its lowest block to its top; a piece in it or before it wins),
+  drawn over in gold (`FootGhost` 'pick'), refused while half built, with furniture on its floor or
+  hung from its roof ("Take out what is in the … first", `furnitureIn`) or, a fence ring his herd
+  uses as its pen, while a cow of his is in it (`penHolds('foot-<uid>')`) (`whyNotFoot`). Picked up,
+  it is carried in footprint mode (`FootMode.carry`): its footprint at its own size before his feet
+  (its near side 1.8 m ahead; or where the mouse points, or the tap), `,` / `.` (⟲ ⟳, the d-pad)
+  turn the whole building a quarter, its door side with it; the placing rules as a new one's over
+  every part, its own land not counted (`FOOTS.skip`), his land's budget with its own blocks taken
+  out, nothing to pay, no cost panel. **"E  Put it here"**: `FOOTS.move` takes its blocks up and
+  writes its plan at the new footprint whole in one change of the layer (the newest plan version),
+  its paint kept (`paintTake` / `paintGive`: block by block when the new plan is the same blocks in
+  the same order, else each part, stage and material, as most of it was); its cost is kept for
+  taking it down later; saved at once, blocks first. URL: `buildmove=1` (the mode on),
+  `buildmove=<uid>` (that piece carried), `buildmove=foot:<uid>[@x/z[/door]]` (that building
+  carried, its middle held at x, z); `__build.moveMode(on)`, `__build.move(uid)`,
+  `__build.moveFoot(uid)` (null, or why not), `state().moveMode` (`aimed`: a piece's uid or
+  `foot:<uid>`, `why`), `state().placing.moving`, `state().foot.carrying`.
 - **The work** (it holds him): he walks to the side of the piece nearest him (round a
   big one, a side every 5.5 s; nearer a small one), his hammer in his right hand, and
   hammers — squatting flat-footed for low work, standing for high; the blow on the block

@@ -19,7 +19,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
-import { MoveMode, whyNot } from './_buildMove';
+import { MoveMode, whyNot, whyNotFoot } from './_buildMove';
 import { byHouse, canBuild, fenceEnd, fenceJoint, ghostAhead, MEET, overlapsBuilt } from './_buildSpots';
 import { BuildUses } from './_buildUses';
 import { furnFromUrl, furnitureHeldBy, furnReport, installFurniture } from './_buildFurniture';
@@ -674,6 +674,15 @@ function pickUp(ctx: RoamCtx, b: Built): void {
   console.info(`[build] ${b.uid} picked up to move`);
 }
 
+/** A footprint building picked up in move mode: footprint mode carrying it (it stays where it is until put down). */
+function carryFoot(ctx: RoamCtx, rec: FootRec): void {
+  if (!env || whyNotFoot(rec) || !FOOTS.list.includes(rec)) return;
+  lastCtx = ctx;
+  enterFoot(rec.kind, rec);
+  env.uiSound('select');
+  console.info(`[build] ${rec.uid} picked up to move`);
+}
+
 /** Done carrying (put down, or Esc: put back): move mode again, for the next. */
 function backToMove(): void {
   exitPlacing();
@@ -690,7 +699,7 @@ function exitPlacing(): void {
 }
 
 /** Footprint mode (AWP-20: _buildFoot.ts) for a kind: build mode's camera and touch bar, its own E, keys and ghost. */
-function enterFoot(kind: FootKind): void {
+function enterFoot(kind: FootKind, carry: FootRec | null = null): void {
   if (!FootMode.on) {
     if (!placing) modeTurned = 0;
     modeCamLetGo = false;
@@ -698,7 +707,8 @@ function enterFoot(kind: FootKind): void {
   }
   exitPlacing();
   MoveMode.exit();
-  FootMode.enter(kind);
+  if (carry) FootMode.carry(carry);
+  else FootMode.enter(kind);
   showTouchBar(true);
 }
 
@@ -710,11 +720,24 @@ function exitFoot(): void {
 
 /** Esc (the pad's ○, the touch ✕) in footprint mode: the first corner again, else out of it. */
 function backFoot(): void {
-  if (!FootMode.back()) showTouchBar(false);
+  // (carrying one he moves: put back, move mode goes on)
+  const carried = !!FootMode.carrying;
+  if (FootMode.back()) return;
+  if (carried) MoveMode.enter();
+  showTouchBar(carried);
 }
 
 /** E (or a click) in footprint mode: the first corner, or "Build here" and his work on it. */
 function useFoot(ctx: RoamCtx): void {
+  if (FootMode.carrying) {
+    // (carrying one he moves: put down there, at once and free; move mode goes on for the next)
+    FootMode.use(ctx, (c) => {
+      if (!FootMode.putDown(c)) return;
+      MoveMode.enter();
+      showTouchBar(true);
+    });
+    return;
+  }
   FootMode.use(ctx, (c) => {
     const rec = FootMode.buildHere(c);
     showTouchBar(FootMode.on);
@@ -977,7 +1000,7 @@ function barWords(): void {
   if (!touchBar) return;
   // (move mode: nothing to turn until he picks one up)
   touchBar.classList.toggle('is-pick', MoveMode.on);
-  const done = FootMode.on && FootMode.stretching ? t('footAgain') : placing && moving ? t('movePutBack') : t('buildExit');
+  const done = FootMode.carrying || (placing && moving) ? t('movePutBack') : FootMode.on && FootMode.stretching ? t('footAgain') : t('buildExit');
   const key = `${lang()}|${done}`;
   if (key === barSaid) return;
   barSaid = key;
@@ -1370,7 +1393,7 @@ registerAddon({
     });
     ghost = new BuildGhost(e.scene, e.world);
     // (move mode: a piece aimed at and picked up is build mode with it)
-    MoveMode.init(e, e.scene, (ctx, b) => pickUp(ctx, b));
+    MoveMode.init(e, e.scene, (ctx, b, foot) => (foot ? carryFoot(ctx, foot) : b && pickUp(ctx, b)));
     edge = createPlotEdge(e.world.field, () => (graphicsNow.plainBlocks ? 'low' : 'medium'));
     e.scene.add(edge.object);
     BuildWork.init(e);
@@ -1399,7 +1422,7 @@ registerAddon({
             pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3), ...(p.len !== undefined ? { len: +p.len.toFixed(3) } : {}) })),
             version: BUILT.version,
             placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, moving: moving?.uid ?? null, len: spot.len !== undefined ? +spot.len.toFixed(3) : null, ghost: !!ghost?.shown } : null,
-            moveMode: MoveMode.on ? { aimed: MoveMode.aimed.piece?.uid ?? null, why: MoveMode.aimed.why } : null,
+            moveMode: MoveMode.on ? { aimed: MoveMode.aimed.piece?.uid ?? (MoveMode.aimed.foot ? `foot:${MoveMode.aimed.foot.uid}` : null), why: MoveMode.aimed.why } : null,
             near: near.piece || near.foot ? { uid: (near.piece ?? near.foot)!.uid, prompt: near.prompt, sit: near.sit } : null,
             work: BuildWork.now,
             card: !!card?.open,
@@ -1432,6 +1455,16 @@ registerAddon({
             const why = whyNot(p);
             if (why) return why;
             pickUp(lastCtx, p);
+            return null;
+          },
+          // (a footprint building by its uid, as E on it would)
+          moveFoot: (uid: string) => {
+            const r = FOOTS.byUid(uid);
+            if (!r || !lastCtx) return 'no building';
+            if (!MoveMode.on) enterMove();
+            const why = whyNotFoot(r);
+            if (why) return why;
+            carryFoot(lastCtx, r);
             return null;
           },
           all: () => placeAll(),
@@ -1692,10 +1725,18 @@ registerAddon({
     // (move mode: `buildmove=1` on, `buildmove=<uid>` that piece picked up)
     const mv = q.get('buildmove');
     if (mv) {
-      const piece = mv === '1' ? null : BUILD.byUid(mv);
-      if (mv !== '1' && !piece) console.warn(`[build] buildmove=: no piece "${mv}" (${BUILD.list.map((p) => p.uid).join(', ')})`);
+      // (`foot:<uid>[@x/z[/door]]`: a footprint building, held with its middle there)
+      const fm = /^foot:([a-z]+-\d+)(?:@(-?[\d.]+)\/(-?[\d.]+)(?:\/([0-3]))?)?$/.exec(mv);
+      const rec = fm ? FOOTS.byUid(fm[1]) : null;
+      const piece = mv === '1' || fm ? null : BUILD.byUid(mv);
+      if (fm && !rec) console.warn(`[build] buildmove=: no footprint building "${fm[1]}" (${FOOTS.list.map((r) => r.uid).join(', ')})`);
+      else if (!fm && mv !== '1' && !piece) console.warn(`[build] buildmove=: no piece "${mv}" (${BUILD.list.map((p) => p.uid).join(', ')})`);
       enterMove();
       if (piece) pickUp(ctx, piece);
+      if (rec) {
+        carryFoot(ctx, rec);
+        if (fm![2] !== undefined) FootMode.holdCarry(Number(fm![2]), Number(fm![3]), fm![4] === undefined ? null : (Number(fm![4]) as FootSide));
+      }
     }
     const g = q.get('buildghost');
     if (g) {
@@ -1788,7 +1829,12 @@ registerAddon({
     if (b) out.build = b;
     const fr = furnReport();
     if (fr) out.furn = fr;
-    if (placing && moving) out.buildmove = moving.uid;
+    const fc = FootMode.carrying;
+    if (fc) {
+      const st = FootMode.state();
+      const r = st.rect;
+      out.buildmove = r ? `foot:${fc.uid}@${((r.i0 + r.i1 + 1) * 0.25).toFixed(2)}/${((r.k0 + r.k1 + 1) * 0.25).toFixed(2)}/${st.door}` : `foot:${fc.uid}`;
+    } else if (placing && moving) out.buildmove = moving.uid;
     else if (placing) out.buildghost = `${placing}:${((turn * 180) / Math.PI).toFixed(0)}`;
     else if (MoveMode.on) out.buildmove = '1';
     const w = BuildWork.now;

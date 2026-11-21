@@ -131,6 +131,96 @@ export const isPainted = (raw: number): boolean => raw !== 0 && PAINT_COLOURS.ha
 const PAINT_COLOURS = new Set<number>();
 for (const p of Object.values(KHMER_PAINT)) for (let f = TONE.lo; f <= TONE.hi + 1e-9; f += TONE.step) PAINT_COLOURS.add(toned(p, Math.round(f / TONE.step) * TONE.step));
 
+// ── Paint going with a building he moves (build/footState.ts `FOOTS.move`) ───────────
+
+/** The paint on a moved building's blocks: per block (in its plan's order), and per part (stage and material). */
+export interface PaintKept {
+  readonly n: number;
+  /** Each block's material (its plan's), to tell whether the new plan is the same blocks in the same order. */
+  readonly mats: readonly number[];
+  readonly byIndex: readonly (PaintId | null)[];
+  /** A part's paint when most of its blocks bore it (a part mostly unpainted: none). */
+  readonly byPart: ReadonlyMap<string, PaintId>;
+}
+
+/** Which of the six a painted block bears (its own colour and material: the tone), or null. */
+function paintOfBlock(raw: number, own: number): PaintId | null {
+  if (!isPainted(raw)) return null;
+  const c = rawColor(raw);
+  const mat = rawMat(raw);
+  let best: PaintId | null = null;
+  let far = Infinity;
+  for (const p of PAINT_IDS) {
+    const v = paintOn(p, own, mat);
+    if (v === c) return p;
+    // (a tone of another own colour: the nearest of the six)
+    const d = Math.abs(((v >> 16) & 255) - ((c >> 16) & 255)) + Math.abs(((v >> 8) & 255) - ((c >> 8) & 255)) + Math.abs((v & 255) - (c & 255));
+    if (d < far) {
+      far = d;
+      best = p;
+    }
+  }
+  return best;
+}
+
+/** A block's part in a plan: its stage and material. */
+function partKey(plan: FootPlan, b: number): string {
+  let stage: FootStage = 'posts';
+  for (const st of plan.stages) if (st.from <= b) stage = st.stage;
+  return `${stage}|${rawMat(plan.raws[b])}`;
+}
+
+/** The paint on a building's blocks now (its first `written` of `plan`), before they are taken away. */
+export function paintTake(plan: FootPlan, written: number): PaintKept {
+  const mats: number[] = [];
+  const byIndex: (PaintId | null)[] = [];
+  const votes = new Map<string, Map<PaintId | null, number>>();
+  for (let b = 0; b < plan.n; b++) {
+    mats.push(rawMat(plan.raws[b]));
+    const raw = b < written ? BLOCKS.raw(plan.cells[b * 3], plan.cells[b * 3 + 1], plan.cells[b * 3 + 2]) : 0;
+    const p = raw ? paintOfBlock(raw, rawColor(plan.raws[b])) : null;
+    byIndex.push(p);
+    const key = partKey(plan, b);
+    let v = votes.get(key);
+    if (!v) votes.set(key, (v = new Map()));
+    v.set(p, (v.get(p) ?? 0) + 1);
+  }
+  const byPart = new Map<string, PaintId>();
+  for (const [key, v] of votes) {
+    let best: PaintId | null = null;
+    let most = 0;
+    for (const [p, n] of v)
+      if (n > most) {
+        most = n;
+        best = p;
+      }
+    if (best) byPart.set(key, best);
+  }
+  return { n: plan.n, mats, byIndex, byPart };
+}
+
+/**
+ * The paint back on a moved building's blocks (just written: its plan's own colours). The same blocks in the same
+ * order (flat land, the same turn): block by block; else each part as most of it was.
+ */
+export function paintGive(plan: FootPlan, kept: PaintKept): void {
+  let same = plan.n === kept.n;
+  for (let b = 0; same && b < plan.n; b++) if (rawMat(plan.raws[b]) !== kept.mats[b]) same = false;
+  if (!kept.byPart.size && !same) return;
+  BLOCKS.batch(() => {
+    for (let b = 0; b < plan.n; b++) {
+      const p = same ? kept.byIndex[b] : kept.byPart.get(partKey(plan, b));
+      if (!p) continue;
+      const i = plan.cells[b * 3];
+      const j = plan.cells[b * 3 + 1];
+      const k = plan.cells[b * 3 + 2];
+      const raw = BLOCKS.raw(i, j, k);
+      if (!raw) continue;
+      BLOCKS.setRaw(i, j, k, raw - rawColor(raw) + paintOn(p, rawColor(plan.raws[b]), rawMat(raw)));
+    }
+  });
+}
+
 /** A part's name ("the walls"): by the building's kind, the stage and the material. */
 function partWord(kind: FootKind, stage: FootStage, mat: BlockMatKey): WordKey {
   if (stage === 'walls') return mat === 'timber' ? 'paintPartPlate' : kind === 'fence' ? 'footStagePanels' : 'footStageWalls';

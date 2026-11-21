@@ -1727,6 +1727,7 @@ const WORDS = {
   moveAim: { km: 'ចង្អុលទៅរបស់ដែលអ្នកបានសង់', en: 'Point at something you built' },
   moveUnfinished: { km: 'សង់{name}ឲ្យរួចសិន', en: 'Finish building the {name} first' },
   moveHolds: { km: 'យករបស់ដែលព្យួរនៅលើវាចេញសិន', en: 'Take down what hangs from it first' },
+  moveHoldsIn: { km: 'យករបស់ដែលនៅក្នុង{name}ចេញសិន', en: 'Take out what is in the {name} first' },
   moveCows: { km: 'គោរបស់អ្នកកំពុងនៅក្នុងក្រោល', en: 'Your cows are in the pen now' },
   movePutBack: { km: 'ដាក់នៅកន្លែងដើមវិញ', en: 'Put it back' },
   buildMoveHere: { km: 'ដាក់នៅទីនេះ', en: 'Put it here' },

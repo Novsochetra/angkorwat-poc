@@ -477,6 +477,9 @@ guide, with every add-on's keys and URL values for shots, is
   - Moving what he built: the card's "Move your things" row → move mode (`roam/_buildMove.ts`):
     aim at a piece (gold), E picks it up, its ghost goes with him, E puts it down free, Esc puts it
     back (`BUILD.move`, the `moved` event; `buildmove=1|<uid>`; addons.md "Moving what he built").
+    Footprint buildings (stilt house, shed, fence line) move too: carried in footprint mode
+    (`FootMode.carry`, `,` / `.` a quarter turn), put down with `FOOTS.move` (blocks rewritten,
+    paint kept: `paint.ts` `paintTake` / `paintGive`); `buildmove=foot:<uid>[@x/z[/door]]`.
   - Footprint buildings (AWP-20): on the build card, a stilt house, a shed or a fence
     line drawn as a rectangle (E a corner, E again "Build here"; the mouse points, a tap
     puts the cursor): posts, floor, walls, roof and stair fit by themselves, written into
