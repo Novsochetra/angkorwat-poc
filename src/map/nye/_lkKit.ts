@@ -240,7 +240,7 @@ export const BRONZE: Tones = [0x5c4430, 0x664c36, 0x6e5238, 0x54402e];
 export function fire(kit: Kit, bodies: Bodies | null, glow: Glow | null, x: number, y: number, z: number, s: number, seed: number, low: boolean): void {
   void bodies;
   const r = (i: number, k: number) => hash3(seed, i, k, 97);
-  kitFire(kit, x, y, z, 1.35 * s, seed);
+  kitFire(kit, x, y, z, 1.5 * s, seed);
   if (!low)
     for (let i = 0; i < 3; i++) {
       const period = [2, 2.4, 3][i];
@@ -252,7 +252,7 @@ export function fire(kit: Kit, bodies: Bodies | null, glow: Glow | null, x: numb
         show: SHOW.night,
       });
     }
-  glow?.add(x, y + 0.45 * s, z, 0xffa040, 2.6 * s, { level: 0.65 });
+  glow?.add(x, y + 0.55 * s, z, 0xffa040, 3.1 * s, { level: 0.7 });
 }
 
 /**

@@ -11,17 +11,21 @@ import type { StairNagaSpec } from '../sacred/naga';
 import { LAKE_AVENUE, LAKE_GATE, LAKE_WALL, lakeFacingIn, lakePlazaAt } from './plan';
 import { hangingBanner, khmerLamp, LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE } from './_sqKit';
 import { fireBowl, GOLD, LACQUER, towerLantern, type Bodies } from './_lkKit';
+import type { PlazaPools } from './_lkPlazaLight';
 
 /**
  * The lake plaza's land gate and its avenue (AWP-35, the owner's lake reference; where: plan.ts `LAKE_GATE`,
  * `LAKE_AVENUE`): as at Angkor Thom, a causeway between naga balustrades leads to a stone gopura with a Bayon face on
  * each side of its tower.
  *
- * - **The gate** on the ring wall's line, facing out along the avenue: a sandstone gopura on a 0.3 m grid (the Kulen
- *   square's gate, `_sqGate.ts`, smaller): wings with false balustered windows either side of a passage 2.7 m wide and
- *   3.3 m high under a corbelled top (no true arch), a moulded base and cornice, and over the passage a tower with the
- *   Bayon's smiling face on all four sides (landmarks/_faces.ts `FACE_TINY`), stepped tiers and a lotus bud (≈ 12 m).
- *   Built square in a builder of its own and set on the map turned (`Frame.place`).
+ * - **The gate** on the ring wall's line, facing out along the avenue: a sandstone gopura on a fine 0.22 m grid (the
+ *   Kulen square's gate, `_sqGate.ts`, smaller: a fraction of the stage's height, as the reference's), its cells laid
+ *   flush (no jitter: no checkerboard of seams): wings with false balustered windows either side of a passage 2.4 m
+ *   wide and 2.6 m high under a corbelled top (no true arch), a moulded base and cornice, and over the passage a tower
+ *   with the Bayon's smiling face on all four sides (landmarks/_faces.ts `FACE_TINY`), stepped tiers and a lotus bud
+ *   (≈ 8.8 m). Fire bowls burn on the cornice's outer corners; lanterns hang in the passage, oil lamps glow in the
+ *   false windows; the plaza's real light stands low before it (lake.ts), so the face is lit warm from below. Built
+ *   square in a builder of its own and set on the map turned (`Frame.place`).
  * - **The naga balustrades** either side of the avenue's last 7 m: a seven-headed cobra with one smooth fan hood rearing
  *   on a pedestal at the outer end, facing whoever comes up the avenue, its body running along stone posts to a
  *   pedestal by the gate (sacred/naga.ts `stairNaga`, sculpted by lake.ts; `naga`); bronze fire bowls burn on those two
@@ -32,10 +36,13 @@ import { fireBowl, GOLD, LACQUER, towerLantern, type Bodies } from './_lkKit';
  * Everything is in the shore's builder (stone: solid, the passage walked through), the kit and the glowing boxes.
  */
 
-/** The gate's grid (m) and size in cells: across (x, along the wall), deep (z, + outward), the passage's half (cells either side of the middle). */
-const C = 0.3;
-const NI = 29;
-const NK = 11;
+/** The gate's grid (m) and size in cells: across (x, along the wall, 7.3 m), deep (z, + outward, 2.9 m). */
+const C = 0.22;
+const NI = 33;
+const NK = 13;
+
+/** The body's top row (cells): the cornice is the next. */
+const TOP_ROW = 17;
 
 /** Kulen sandstone, as the plaza's pillars and wall (the Bayon's tones warmed and lightened: it reads at night by the braziers). */
 const STONE: StoneTones = {
@@ -56,7 +63,7 @@ export interface LakeGate {
   naga: Pick<StairNagaSpec, 'fans' | 'bodies' | 'radius'> | null;
 }
 
-export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, bodies: Bodies, glow: Glow, lamps: Lamps, low: boolean, src: SourceTrace | undefined): LakeGate {
+export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, bodies: Bodies, glow: Glow, lamps: Lamps, low: boolean, src: SourceTrace | undefined, pools: PlazaPools | null = null): LakeGate {
   const n0 = out.boxes.length;
   const phi = LAKE_GATE.phi;
   const yawOut = lakeFacingIn(phi) + Math.PI;
@@ -81,13 +88,13 @@ export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, b
   for (const sx of [-1, 1]) {
     const lx = sx * ((NI * C) / 2 - 0.5);
     const lz = (NK * C) / 2 - 0.5;
-    fireBowl(out, kit, bodies, glow, F.wx(lx, lz), ground + 16 * C, F.wz(lx, lz), 0.75, 475 + sx, low, src, yawOut);
+    fireBowl(out, kit, bodies, glow, F.wx(lx, lz), ground + (TOP_ROW + 1) * C, F.wz(lx, lz), 0.95, 475 + sx, low, src, yawOut);
   }
   for (const s of [-1, 1]) {
     const [x, z] = [F.wx(0, s * ((NK * C) / 2 - 0.4)), F.wz(0, s * ((NK * C) / 2 - 0.4))];
-    towerLantern(out, kit, bodies, glow, x, ground + 3.95, z, 0.35, 470 + s, src, yawOut);
-    for (const lx of [-3.0, 3.0])
-      for (const ly of [1.35, 2.15]) {
+    towerLantern(out, kit, bodies, glow, x, ground + 3.35, z, 0.25, 470 + s, src, yawOut);
+    for (const lx of [-2.42, 2.42])
+      for (const ly of [1.15, 1.8]) {
         const fx = F.wx(lx, s * ((NK * C) / 2 + 0.03));
         const fz = F.wz(lx, s * ((NK * C) / 2 + 0.03));
         bodies.add(fx, ground + ly, fz, 0.1, 0.16, 0.06, 0xffa850, 0.95, yawOut);
@@ -139,7 +146,7 @@ export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, b
       out.box(px, g + 0.1, pz, w + 0.2, 0.3, w + 0.2, pick(LATERITE, s, lz, 5, 432), 'mapStone', { src, ry: yawOut, shade: 0.95 });
       out.box(px, g + 0.25 + (h - 0.25) / 2, pz, w, h - 0.25, w, pick(POST_STONE, s, lz, 6, 432), 'mapStone', { src, ry: yawOut });
       out.box(px, g + h + 0.05, pz, w + 0.12, 0.1, w + 0.12, pick(POST_STONE, s, lz, 7, 432), 'mapStone', { src, ry: yawOut, shade: 1.05 });
-      if (lz === footZ) fireBowl(out, kit, bodies, glow, px, g + h + 0.1, pz, 1.0, 433 + s, low, src, yawOut);
+      if (lz === footZ) fireBowl(out, kit, bodies, glow, px, g + h + 0.1, pz, 1.1, 433 + s, low, src, yawOut);
       field.occupy(px - 0.9, pz - 0.9, px + 0.9, pz + 0.9);
     }
     // Posts under the body between them (on low: a low kerb wall instead, no naga).
@@ -173,6 +180,7 @@ export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, b
       const [px, pz] = at(s * (W / 2 + 0.75), lz);
       if (field.trail[field.index(px, pz)] === 2) continue;
       khmerLamp(out, px, field.heightAt(px, pz), pz, 1.3, 450 + Math.round(lz) * 2 + s, src, lamps, null, 2.3);
+      pools?.add(...at(s * (W / 2 - 0.4), lz), 3, 0xffa850, 0.24);
       field.occupy(px - 0.5, pz - 0.5, px + 0.5, pz + 0.5);
     }
 
@@ -213,7 +221,8 @@ function gopura(b: VoxelBuilder, ground: number): void {
   const ox = -(NI * C) / 2;
   const oz = -(NK * C) / 2;
   // (row 0 is under the ground: the gate's foot never shows a gap)
-  const g = b.grid({ cell: C, origin: [ox, ground - C, oz], mat: 'mapStone', jitter: 0.03, ao: 0.3, seed: 461 });
+  // (no jitter: on a grid this fine, cells standing in and out read as a checkerboard of dark seams at night)
+  const g = b.grid({ cell: C, origin: [ox, ground - C, oz], mat: 'mapStone', jitter: 0, ao: 0.22, seed: 461 });
   const T = STONE;
   const seed = 461;
   const wall = (i: number, j: number, k: number) => bondTone(T.wall, i, j, k, seed);
@@ -221,9 +230,9 @@ function gopura(b: VoxelBuilder, ground: number): void {
   const shade = (_i: number, j: number) => courseShade(j);
   const ci = (NI - 1) / 2;
   const ck = (NK - 1) / 2;
-  /** Half the passage (cells either side of the middle column) at row j, or −1 where it is closed: 3.3 m, then corbelled in. */
-  const open = (j: number): number => (j >= 1 && j <= 11 ? 4 : j === 12 ? 3 : j === 13 ? 2 : j === 14 ? 1 : -1);
-  const TOP = 15;
+  /** Half the passage (cells either side of the middle column) at row j, or −1 where it is closed: 2.6 m, then corbelled in. */
+  const open = (j: number): number => (j >= 1 && j <= 12 ? 5 : j >= 13 && j <= 16 ? 17 - j : -1);
+  const TOP = TOP_ROW;
 
   // ── The body: wings either side of the passage, a moulded base, a cornice ──
   fillBox(g, 0, NI - 1, 0, TOP, 0, NK - 1, (i, j, k) => (Math.abs(i - ci) <= open(j) ? null : j === 1 ? ledge(i, j, k) : wall(i, j, k)), 'mapStone', shade);
@@ -240,31 +249,31 @@ function gopura(b: VoxelBuilder, ground: number): void {
   // False windows in the wings (both faces): a light frame, dark gaps between turned balusters.
   for (const k of [-1, NK]) {
     const kk = k < 0 ? 0 : NK - 1;
-    for (const c0 of [2, NI - 7]) {
-      for (let j = 4; j <= 10; j++)
+    for (const c0 of [3, NI - 8]) {
+      for (let j = 4; j <= 11; j++)
         for (let i = c0; i < c0 + 5; i++) {
-          const edge = j === 4 || j === 10 || i === c0 || i === c0 + 4;
+          const edge = j === 4 || j === 11 || i === c0 || i === c0 + 4;
           if (edge) g.put(i, j, k, { color: tone(T.light, i, j, k, seed + 2), mat: 'mapStone', shade: 1.02 });
           else g.put(i, j, kk, { color: (i - c0) % 2 ? tone(T.mid, i, j, kk, seed) : tone(T.deep, i, j, kk, seed), mat: 'mapStone', shade: (i - c0) % 2 ? 1 : 0.8 });
         }
     }
     // The lintel over the passage, carved lighter; a pediment of three steps over it.
-    for (let i = ci - 6; i <= ci + 6; i++) for (const j of [12, 13, 14]) if (Math.abs(i - ci) > open(j)) g.put(i, j, k, { color: tone(T.bright, i, j, k, seed + 3), mat: 'mapStone', shade: 1 });
+    for (let i = ci - 7; i <= ci + 7; i++) for (const j of [13, 14, 15, 16]) if (Math.abs(i - ci) > open(j)) g.put(i, j, k, { color: tone(T.bright, i, j, k, seed + 3), mat: 'mapStone', shade: 1 });
     for (const [j, h] of [
-      [TOP + 2, 4],
-      [TOP + 3, 2],
+      [TOP + 2, 5],
+      [TOP + 3, 3],
     ] as const)
       for (let i = ci - h; i <= ci + h; i++) g.put(i, j, k, { color: tone(T.light, i, j, k, seed + 4), mat: 'mapStone', shade: 1.03 });
   }
   // The passage's floor: paving through it.
-  for (let i = ci - 4; i <= ci + 4; i++) for (let k = 0; k < NK; k++) g.put(i, 0, k, { color: tone(T.ledge, i, 0, k, seed + 4), mat: 'mapStone', shade: 0.95 });
+  for (let i = ci - 5; i <= ci + 5; i++) for (let k = 0; k < NK; k++) g.put(i, 0, k, { color: tone(T.ledge, i, 0, k, seed + 4), mat: 'mapStone', shade: 0.95 });
 
   // ── The tower: a plinth, the faces, a cornice, stepped tiers, the lotus bud ──
   const square = (h: number, j0: number, j1: number, color: (i: number, j: number, k: number) => number, notch = true) =>
     fillBox(g, ci - h, ci + h, j0, j1, ck - h, ck + h, (i, j, k) => (notch && Math.abs(i - ci) === h && Math.abs(k - ck) === h ? null : color(i, j, k)), 'mapStone', shade);
   let j = TOP + 2;
-  square(5, j, j, wall, false);
-  square(5, j + 1, j + 1, ledge, false);
+  square(6, j, j, wall, false);
+  square(6, j + 1, j + 1, ledge, false);
   const fj = j + 2;
   square(4, fj, fj + FACE_TINY.height - 1, wall, false);
   for (const side of ['S', 'E', 'N', 'W'] as Side[]) carveFace(g, { ci, ck, half: 4, j0: fj, side, face: FACE_TINY, tones: T, seed: seed + 7 });
@@ -272,9 +281,9 @@ function gopura(b: VoxelBuilder, ground: number): void {
   square(5, j, j, ledge, false);
   j++;
   for (const [h, rows] of [
-    [4, 2],
-    [3, 2],
-    [2, 2],
+    [4, 1],
+    [3, 1],
+    [2, 1],
     [1, 1],
   ] as const) {
     square(h, j, j + rows - 2, wall);

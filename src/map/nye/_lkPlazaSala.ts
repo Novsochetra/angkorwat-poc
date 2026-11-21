@@ -8,7 +8,8 @@ import { BAMBOO, PLANK, POST, Site } from '../jungle/_campKit';
 import { registerShop, type ShopItem } from '../shop';
 import { LAKE_SALAS, LAKE_STALLS, lakePlazaPolar } from './plan';
 import { LATERITE, pick, POST_STONE } from './_sqKit';
-import { BULB, GOLD, LANTERN, type Bodies } from './_lkKit';
+import { BULB, GOLD, LANTERN, towerLantern, type Bodies } from './_lkKit';
+import type { PlazaPools } from './_lkPlazaLight';
 
 /**
  * The lake plaza's two salas and its food stalls (AWP-35, the owner's lake reference; where: plan.ts `LAKE_SALAS`,
@@ -19,11 +20,12 @@ import { BULB, GOLD, LANTERN, type Bodies } from './_lkKit';
  *   bases, and the Khmer two-tiered roof of terracotta tiles — a hipped skirt, over it a gable roof whose gable end faces
  *   the plaza (a lacquer board in each stepped triangle, gilt along its edges, a gilt lotus at its peak), a plain ridge
  *   with a small Angkor tower in its middle. Never Thai: no gable horns, no flame finials. Inside, families' low
- *   tables with fruit and sweets on them, mats, three tower lanterns hanging from the tie beams, bulbs along the front
- *   eave (`eaves`: the plaza's string lights tie on at its corners).
+ *   tables with fruit and sweets on them, mats; lit warm: three tower lanterns hanging from the tie beams and four under
+ *   the eaves' corners, bulbs along all four eaves (`eaves`: the plaza's string lights tie on at the front corners), the
+ *   gables' gilt edges glowing, a pool of light on its floor and before its steps.
  * - **The food stalls** inside the wall, their backs to it: a timber stand under a red-and-white striped canopy (two
- *   slopes to a ridge, a scalloped valance), a counter with a red cloth and a gilt hem, the goods on it, a little Khmer
- *   lamp hanging at the front. Each registers a shop (shop.ts: E Buy while roaming; ids `nye-lake-*`): grilled fish and
+ *   slopes to a ridge, a scalloped valance: cloth in the festival kit, lit through a little at night), a counter with a
+ *   red cloth and a gilt hem, the goods on it, lamps hanging at the front and over the goods, a pool of light before it. Each registers a shop (shop.ts: E Buy while roaming; ids `nye-lake-*`): grilled fish and
  *   prawns from the lake, fruit, drinks, sweets.
  *
  * Families: stone (plinths, tiles, jars), bark (timber: solid to walk on), petal (cloth, food: soft). In the shore's
@@ -38,6 +40,8 @@ export interface SalasIn {
   glow: Glow;
   low: boolean;
   src: SourceTrace | undefined;
+  /** The plaza's pools of light on the ground (their floors lit warm). */
+  pools?: PlazaPools | null;
 }
 
 type V3 = { x: number; y: number; z: number };
@@ -175,7 +179,8 @@ function sala(o: SalasIn, p: (typeof LAKE_SALAS)[number], i: number): { near: V3
     ty += hh;
   }
   S.box(0, ty + 0.1, 0, 0.12, 0.2, 0.12, pick(GOLD, 0, 4, 21, 642), 'mapStone', { shade: 1.1 });
-  // ── Three tower lanterns hanging from the tie beams; bulbs along the front eave ──
+  // ── Lit warm inside: three tower lanterns hanging from the tie beams, four more under the eaves' corners, bulbs along
+  // all four eaves, the gable ends' gilt edges glowing, a pool of light on its floor and before its steps ──
   for (const z of [zs[1], zs[2], 0]) {
     const top = by + 0.23;
     const ly = top - 0.8;
@@ -184,13 +189,47 @@ function sala(o: SalasIn, p: (typeof LAKE_SALAS)[number], i: number): { near: V3
     S.box(0, ly + 0.27, z, 0.2, 0.08, 0.2, pick(GOLD, 1, z, 23, 642), 'mapStone');
     S.box(0, ly - 0.2, z, 0.3, 0.06, 0.3, pick(GOLD, 2, z, 24, 642), 'mapStone');
     const L = S.world(0, ly, z);
-    bodies.add(L.x, L.y, L.z, 0.24, 0.32, 0.24, LANTERN[(i + Math.round(z * 3)) & 3], 1.05, p.facing);
-    glow.add(L.x, L.y, L.z, LAMP_HALO, 2.6, { level: 0.8 });
+    bodies.add(L.x, L.y, L.z, 0.26, 0.34, 0.26, LANTERN[(i + Math.round(z * 3)) & 3], 1.25, p.facing);
+    glow.add(L.x, L.y, L.z, LAMP_HALO, 3, { level: 0.9 });
+  }
+  for (const [cx, cz] of [
+    [-1, 1],
+    [1, 1],
+    [-1, -1],
+    [1, -1],
+  ]) {
+    const W = S.world(cx * (eaveX - 0.35), eaveY - 0.02, cz * (eaveZ - 0.35));
+    towerLantern(b, o.kit, bodies, glow, W.x, W.y, W.z, 0.22, 650 + i * 4 + cx + 2 * cz, src, p.facing);
   }
   const step = low ? 0.7 : 0.42;
-  for (let x = -eaveX; x <= eaveX + 0.01; x += step) {
-    const W = S.world(x, eaveY - 0.08 - 0.06 * Math.cos((x / eaveX) * Math.PI * 0.5), eaveZ);
-    bodies.add(W.x, W.y, W.z, 0.1, 0.12, 0.1, BULB[Math.floor(hash3(x, i, 1, 643) * BULB.length) % BULB.length], 0.9);
+  for (const [ex, ez, along] of [
+    [0, eaveZ, true],
+    [0, -eaveZ, true],
+    [eaveX, 0, false],
+    [-eaveX, 0, false],
+  ] as const) {
+    const half = along ? eaveX : eaveZ;
+    for (let t = -half; t <= half + 0.01; t += step) {
+      const W = S.world(along ? t : ex, eaveY - 0.08 - 0.06 * Math.cos((t / half) * Math.PI * 0.5), along ? ez : t);
+      bodies.add(W.x, W.y, W.z, 0.1, 0.12, 0.1, BULB[Math.floor(hash3(t, i, ex + ez, 643) * BULB.length) % BULB.length], 0.9);
+    }
+  }
+  for (const sd of [-1, 1])
+    for (let k = 1; k < steps; k++) {
+      const ww = 2 * (0.3 + dx * (steps - k)) - 0.3;
+      if (ww <= 0.2) continue;
+      for (const sx of [-1, 1]) {
+        const W = S.world((sx * (ww + 0.12)) / 2, y0 + 0.22 * k + 0.11, sd * (gz + 0.06));
+        bodies.add(W.x, W.y, W.z, 0.1, 0.22, 0.04, 0xffc35a, 0.55, p.facing);
+      }
+    }
+  if (o.pools) {
+    for (const z of [zs[1], zs[2]]) {
+      const W = S.world(0, 0, z);
+      o.pools.add(W.x, W.z, 2.6, 0xffb058, 0.46, g + ph + 0.02);
+    }
+    const F = S.world(0, 0, d / 2 + 2.6);
+    o.pools.add(F.x, F.z, 4.2, 0xffa850, 0.32);
   }
   // Its ground: no trees.
   for (let lz = -d / 2 - 1.5; lz <= d / 2 + 1.6; lz += 0.5)
@@ -284,19 +323,24 @@ function stall(o: SalasIn, p: (typeof LAKE_STALLS)[number], i: number): void {
   const zMid = (pzF + pzB) / 2;
   const tilt = Math.atan2(ridgeY - H, half);
   const slope = Math.hypot(ridgeY - H, half) + 0.04;
+  // (cloth in the festival kit, glowing a little at night: the lamps under it light it through, a lit stall from afar)
+  const cloth = (lx: number, ly: number, lz: number, sx: number, sy: number, sz: number, color: number, pitch = 0) => {
+    const W = s.world(lx, ly, lz);
+    o.kit.box(W.x, W.y, W.z, sx, sy, sz, color, { yaw: p.facing, pitch, glow: color === RED ? 0.2 : 0.13 });
+  };
   const stripes = 9;
   for (const side of [-1, 1])
     for (let k = 0; k < stripes; k++) {
       const x = -px - 0.25 + ((k + 0.5) * (2 * px + 0.5)) / stripes;
-      s.box(x, (H + ridgeY) / 2, zMid + (side * half) / 2, (2 * px + 0.5) / stripes + 0.005, 0.05, slope, k % 2 ? WHITE : RED, 'petal', { rx: side * tilt });
+      cloth(x, (H + ridgeY) / 2, zMid + (side * half) / 2, (2 * px + 0.5) / stripes + 0.005, 0.05, slope, k % 2 ? WHITE : RED, side * tilt);
     }
   s.box(0, ridgeY + 0.03, zMid, 2 * px + 0.6, 0.08, 0.1, 0xe2b04a, 'petal');
   for (const side of [-1, 1]) {
     const fz = zMid + side * (half + 0.02);
     for (let k = 0; k < 10; k++) {
       const x = -px - 0.25 + ((k + 0.5) * (2 * px + 0.5)) / 10;
-      s.box(x, H - 0.02, fz, (2 * px + 0.5) / 10 - 0.02, 0.2, 0.04, k % 2 ? RED : WHITE, 'petal');
-      s.box(x, H - 0.16, fz, 0.18, 0.1, 0.04, k % 2 ? RED : WHITE, 'petal');
+      cloth(x, H - 0.02, fz, (2 * px + 0.5) / 10 - 0.02, 0.2, 0.04, k % 2 ? RED : WHITE);
+      cloth(x, H - 0.16, fz, 0.18, 0.1, 0.04, k % 2 ? RED : WHITE);
     }
   }
   // The counter: a plank top on legs, a red cloth with a gilt hem down its front.
@@ -314,8 +358,23 @@ function stall(o: SalasIn, p: (typeof LAKE_STALLS)[number], i: number): void {
   s.box(-1.0, 2.3, pzF, 0.26, 0.05, 0.26, 0xb4a385, 'mapStone');
   s.box(-1.0, 2.36, pzF, 0.14, 0.07, 0.14, 0xd9a93a, 'mapStone');
   s.box(-1.0, 1.98, pzF, 0.22, 0.05, 0.22, 0xb4a385, 'mapStone');
-  bodies.add(L.x, L.y, L.z, 0.18, 0.24, 0.18, 0xffb860, 1.05);
-  glow.add(L.x, L.y, L.z, LAMP_HALO, 1.8, { level: 0.85 });
+  bodies.add(L.x, L.y, L.z, 0.21, 0.26, 0.21, 0xffb860, 1.2);
+  glow.add(L.x, L.y, L.z, LAMP_HALO, 2, { level: 0.9 });
+  // (and a lantern over the goods in the middle, lighting them: the stall reads lit from afar)
+  for (const [lx, lz] of [
+    [1.0, pzF],
+    [0, 0.45],
+  ]) {
+    const M = s.world(lx, 2.12, lz);
+    s.box(lx, 2.45, lz, 0.02, 0.36, 0.02, 0x3a3028, 'mapBark');
+    s.box(lx, 2.28, lz, 0.26, 0.05, 0.26, 0xd9a93a, 'mapStone');
+    bodies.add(M.x, M.y, M.z, 0.21, 0.26, 0.21, 0xffc070, 1.15, p.facing);
+    glow.add(M.x, M.y, M.z, LAMP_HALO, 1.9, { level: 0.85 });
+  }
+  if (o.pools) {
+    const F = s.world(0, 0, 1.9);
+    o.pools.add(F.x, F.z, 4.4, 0xffb058, 0.4);
+  }
   for (let x = -px; x <= px + 0.01; x += low ? 0.6 : 0.36) {
     const W = s.world(x, H - 0.32 - 0.05 * Math.cos((x / px) * Math.PI * 0.5), pzF + 0.62);
     bodies.add(W.x, W.y, W.z, 0.09, 0.11, 0.09, BULB[Math.floor(hash3(x, i, 2, 661) * BULB.length) % BULB.length], 0.85);

@@ -6,11 +6,12 @@ import type { Kit } from '../festival/_kit';
 import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import type { StairNagaSpec } from '../sacred/naga';
-import { LAKE_GATE, LAKE_MANDALA, LAKE_PILLARS, LAKE_SALAS, LAKE_SHORE, LAKE_SIDE, LAKE_WALL, lakeFacingIn, lakePlazaAt, lakePlazaPolar } from './plan';
-import { hangingBanner, LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE, RING_STONE } from './_sqKit';
+import { LAKE_AVENUE, LAKE_GATE, LAKE_MANDALA, LAKE_PILLARS, LAKE_SALAS, LAKE_SHORE, LAKE_SIDE, LAKE_WALL, lakeFacingIn, lakePlazaAt, lakePlazaPolar } from './plan';
+import { hangingBanner, LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE } from './_sqKit';
 import { fireBowl, GOLD, lampPost, stringLights, type Bodies, type LakeFrame } from './_lkKit';
 import { buildLakeGate } from './_lkPlazaGate';
 import { dressPlazaGarden } from './_lkPlazaGarden';
+import { PlazaPools } from './_lkPlazaLight';
 import { buildLakeSalas } from './_lkPlazaSala';
 
 /**
@@ -18,10 +19,10 @@ import { buildLakeSalas } from './_lkPlazaSala';
  * where: plan.ts `LAKE_SHORE` and the layout under it): one round composition in front of the floating stage — the eye
  * goes from the gate up the plaza to the gold lotus in its middle, on down the jetty to the stage and the lake.
  *
- * - **The floor**: sandstone pavers laid in concentric rings (each stone turned to its ring, neighbours a centimetre
- *   apart in height so their bevelled edges read as joints), darker stone under the gold lotus mandala in the middle
- *   (lake.ts lays the Kulen ring's painted lotus over it, `_sqRing.ts`), a dark border course round the mandala and a
- *   laterite one at the rim; the landing from the front down to the ghat in square stones, a pale way to the jetty.
+ * - **The floor**: warm sandstone pavers laid in concentric rings (each stone turned to its ring, neighbours a
+ *   centimetre apart in height so their bevelled edges read as joints), pale under the gold lotus mandala in the middle
+ *   (its painted lines and the pools of firelight round the plaza: `_lkPlazaLight.ts`, one draw), a thin dark course
+ *   round the mandala and a laterite one at the rim; the landing in square stones, a pale way to the jetty.
  * - **The ring wall**: a low, slim sandstone wall (0.9 m high, 0.5 m at its foot: walking into it stops him) on a
  *   laterite footing, coping on top (and, but on low, a band of carved panels
  *   on its inner face), in straight runs between **fire pillars** (`LAKE_PILLARS`: a moulded base, the shaft with carved
@@ -43,9 +44,8 @@ export const TOP = 0.08;
 /** The rings' width (m). */
 const RING = 1.2;
 
-/** The mandala's ground: a darker warm stone, so the gold reads; the border courses. */
-const MANDALA_STONE = [0x7a6c58, 0x74675a, 0x81725e, 0x6f6352];
-const DARK_COURSE = [0x5e5244, 0x584d40, 0x645748];
+/** The thin courses of darker stone (round the mandala, the carved panels' recesses). */
+const DARK_COURSE = [0x6e604e, 0x675a49, 0x766753];
 const GILT = [0xc9a04c, 0xbf9644, 0xd2aa56];
 
 export interface PlazaIn {
@@ -74,6 +74,8 @@ export interface Plaza {
   front: { x: number; y: number; z: number }[];
   /** Paved (the plaza, the landing): the floor's own rule, for the garden round it. */
   paved(x: number, z: number): boolean;
+  /** The pools of firelight on the ground (lake.ts adds the mandala and builds them: one draw). */
+  pools: PlazaPools;
 }
 
 /** Wall runs between these bearings (radians) — the openings and the salas left out — each end inset for a pillar. */
@@ -118,26 +120,51 @@ export function buildPlaza(o: PlazaIn): Plaza {
     return Math.abs(u) <= o.landing && v <= centreV && v >= bankAt(Math.round(u)).bank - 0.05;
   };
   const paved = (x: number, z: number) => Math.hypot(x - LAKE_SHORE.x, z - LAKE_SHORE.z) <= R || onLanding(x, z);
+  // (the pools of firelight: full on the floor, the landing and the avenue, a fifth on grass)
+  const [avx0, avz0] = lakePlazaAt(LAKE_AVENUE.phi, LAKE_AVENUE.r0 - 1.5);
+  const [avx1, avz1] = lakePlazaAt(LAKE_AVENUE.phi, LAKE_AVENUE.r1);
+  const onAvenue = (x: number, z: number) => {
+    const dx = avx1 - avx0;
+    const dz = avz1 - avz0;
+    const t = Math.max(0, Math.min(1, ((x - avx0) * dx + (z - avz0) * dz) / (dx * dx + dz * dz)));
+    return Math.hypot(x - avx0 - dx * t, z - avz0 - dz * t) < LAKE_AVENUE.w / 2 + 0.3;
+  };
+  const pools = new PlazaPools(field, (x, z) => paved(x, z) || onAvenue(x, z), TOP);
+  /** A pool `k` m in from (x, z) toward the plaza's middle. */
+  const inward = (x: number, z: number, k: number): [number, number] => {
+    const d = Math.hypot(LAKE_SHORE.x - x, LAKE_SHORE.z - z) || 1;
+    return [x + ((LAKE_SHORE.x - x) / d) * k, z + ((LAKE_SHORE.z - z) / d) * k];
+  };
+  // (the whole floor faintly warm: the stones read as sandstone at night, the pools round the fires over it)
+  pools.add(LAKE_SHORE.x, LAKE_SHORE.z, R + 0.5, 0xffa040, 0.06);
   // The middle stone (an octagon: two squares, one turned).
   for (const t of [0, Math.PI / 4]) b.box(LAKE_SHORE.x, g0 + TOP - 0.15 + 0.004 * (t ? 1 : 0), LAKE_SHORE.z, 1.25, 0.3, 1.25, pick(GILT, t, 1, 1, 471), 'mapStone', { src, ry: t + fr.yaw, shade: 1 });
   let pavers = 2;
-  for (let k = 0; ; k++) {
-    const r0 = 0.6 + k * RING;
-    const r1 = Math.min(R, r0 + RING);
-    if (r0 >= R - 0.05) break;
+  // The rings' edges: 1.2 m rings, but two thin courses of darker stone — round the mandala's rim and at the plaza's
+  // rim — so the floor reads warm sandstone, the gold lotus lying on paving (the owner's reference), not on a dark disc.
+  const edges: number[] = [0.6];
+  const course = (r0: number, w: number) => {
+    while (edges[edges.length - 1] + RING < r0 - 0.3) edges.push(edges[edges.length - 1] + RING);
+    edges.push(r0, r0 + w);
+  };
+  course(LAKE_MANDALA.r + 0.15, 0.5);
+  course(R - 0.55, 0.55);
+  for (let k = 0; k + 1 < edges.length; k++) {
+    const r0 = edges[k];
+    const r1 = edges[k + 1];
     const rm = (r0 + r1) / 2;
-    const n = Math.max(8, Math.round((2 * Math.PI * rm) / 1.25));
+    const thin = r1 - r0 < 0.8;
+    const n = Math.max(8, Math.round((2 * Math.PI * rm) / (thin ? 0.9 : 1.25)));
     const len = (2 * Math.PI * r1) / n + 0.02;
-    // (the stones' tone by ring: the mandala's ground, its border, bands of pale and buff, the laterite rim)
+    // (the stones' tone by ring: pale under the lotus, bands of pale and buff, the two thin dark courses)
     const toneOf = (i: number): [number, number] => {
       const h = hash3(k, i, 3, 472);
-      if (r1 <= LAKE_MANDALA.r + 0.4) return [pick(MANDALA_STONE, k, i, 1, 472), 0.94 + 0.08 * h];
-      if (r0 < LAKE_MANDALA.r + 1.6) return [pick(DARK_COURSE, k, i, 2, 472), 0.95 + 0.06 * h];
-      if (r1 > R - 0.1) return [pick(LATERITE, k, i, 4, 472), 0.92 + 0.06 * h];
-      if (k % 4 === 3) return [pick(RING_STONE, k, i, 5, 472), 0.96 + 0.06 * h];
+      if (thin && r1 >= R - 0.05) return [pick(LATERITE, k, i, 4, 472), 0.94 + 0.06 * h];
+      if (thin) return [pick(DARK_COURSE, k, i, 2, 472), 0.96 + 0.06 * h];
       // (now and then a mended stone)
-      if (h < 0.03) return [pick(LATERITE, k, i, 6, 472), 0.94];
-      return [Math.floor(k / 2) % 2 ? pick(PAVER, k, i, 7, 472) : pick(PAVER_LIGHT, k, i, 8, 472), 0.95 + 0.08 * h];
+      if (h < 0.025) return [pick(LATERITE, k, i, 6, 472), 0.96];
+      if (r1 <= LAKE_MANDALA.r + 0.2) return [pick(PAVER_LIGHT, k, i, 1, 472), 0.97 + 0.07 * h];
+      return [Math.floor(k / 2) % 2 ? pick(PAVER, k, i, 7, 472) : pick(PAVER_LIGHT, k, i, 8, 472), 0.97 + 0.08 * h];
     };
     const off = hash3(k, 1, 1, 473) * Math.PI;
     for (let i = 0; i < n; i++) {
@@ -184,6 +211,7 @@ export function buildPlaza(o: PlazaIn): Plaza {
         b.box(lx, land(lx, lz) + 0.62, lz, 0.5, 0.06, 0.5, pick(POST_STONE, s, v, 7, 474), 'mapStone', { src, ry: fr.yaw, shade: 1.05 });
         for (const [k, w] of [0.44, 0.32, 0.2].entries()) b.box(lx, land(lx, lz) + 0.95 + k * 0.1, lz, w, 0.1, w, pick(POST_STONE, s, k, 8, 474), 'mapStone', { src, ry: fr.yaw, shade: 1 + 0.02 * k });
         glow.add(lx, land(lx, lz) + 0.75, lz, 0xffb45a, 2, { level: 0.85 });
+        pools.add(...fr.at(u - s * 1.2, v), 3, 0xffa850, 0.26);
       }
     }
   }
@@ -233,7 +261,7 @@ export function buildPlaza(o: PlazaIn): Plaza {
   // ── The fire pillars ──
   const front: Plaza['front'] = [];
   for (const [i, p] of LAKE_PILLARS.entries()) {
-    const w = p.big ? 1.0 : 0.82;
+    const w = p.big ? 1.15 : 0.92;
     const H = p.big ? 3.9 : 3.1;
     const g = land(p.x, p.z);
     const ry = lakeFacingIn(p.phi);
@@ -260,7 +288,9 @@ export function buildPlaza(o: PlazaIn): Plaza {
     b.box(p.x, g + H + 0.08, p.z, w + 0.2, 0.16, w + 0.2, st(14), 'mapStone', { src, ry, shade: 1.05 });
     b.box(p.x, g + H + 0.22, p.z, w + 0.32, 0.12, w + 0.32, st(15), 'mapStone', { src, ry, shade: 1.08 });
     const top = g + H + 0.28;
-    fireBowl(b, kit, bodies, glow, p.x, top, p.z, p.big ? 1.15 : 0.9, 480 + i, low, src, ry);
+    fireBowl(b, kit, bodies, glow, p.x, top, p.z, p.big ? 1.5 : 1.2, 480 + i, low, src, ry);
+    // (its pool of firelight on the paving, a little inside the wall)
+    pools.add(...inward(p.x, p.z, 1.6), p.big ? 5.6 : 4.6, 0xffa448, p.big ? 0.4 : 0.36);
     field.occupy(p.x - w, p.z - w, p.x + w, p.z + w);
     // Banners: on the big pillars and on the sides' middle ones, hanging on the face toward the plaza's middle.
     const deg = Math.round((p.phi * 180) / Math.PI);
@@ -292,6 +322,7 @@ export function buildPlaza(o: PlazaIn): Plaza {
     const [x, z] = lakePlazaAt(a, RP);
     if (wet(x, z) || land(x, z) < 7.5) continue;
     ties.push({ phi: a, at: lampPost(b, kit, bodies, glow, x, land(x, z), z, H, lakeFacingIn(a), 500 + i, src) });
+    pools.add(...inward(x, z, 2.2), 3.4, 0xffb058, 0.24);
     field.occupy(x - 0.5, z - 0.5, x + 0.5, z + 0.5);
   }
   // (the back's last gap: between the last pillar and the gate's wing, a post too)
@@ -299,6 +330,7 @@ export function buildPlaza(o: PlazaIn): Plaza {
     const a = (pillarPhis[pillarPhis.length - 1] + (LAKE_GATE.phi + 2 * Math.PI - 0.36)) / 2;
     const [x, z] = lakePlazaAt(a, RP);
     ties.push({ phi: a, at: lampPost(b, kit, bodies, glow, x, land(x, z), z, H, lakeFacingIn(a), 530, src) });
+    pools.add(...inward(x, z, 2.2), 3.4, 0xffb058, 0.24);
     field.occupy(x - 0.5, z - 0.5, x + 0.5, z + 0.5);
   }
   const norm = (a: number) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
@@ -314,8 +346,11 @@ export function buildPlaza(o: PlazaIn): Plaza {
   }
 
   // ── The gate and the avenue, the salas and stalls, the garden ──
-  const gate = buildLakeGate(field, b, kit, bodies, glow, lamps, low, src);
-  const salas = buildLakeSalas({ field, b, kit, bodies, glow, low, src });
+  const gate = buildLakeGate(field, b, kit, bodies, glow, lamps, low, src, pools);
+  const salas = buildLakeSalas({ field, b, kit, bodies, glow, low, src, pools });
+  // (the gate: its passage's mouth inside, and the braziers' light on the avenue before it)
+  pools.add(...lakePlazaAt(LAKE_GATE.phi, RW - 3), 4.6, 0xffa850, 0.3);
+  pools.add(...lakePlazaAt(LAKE_GATE.phi, RW + LAKE_GATE.depth / 2 + 2.2), 5.2, 0xffa040, 0.34);
   // String lights from the big pillars by the landing to the posts before the salas, on to the salas' eaves, and from
   // the salas' far corners to the posts beyond them: one string round the plaza's front half.
   const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -335,49 +370,7 @@ export function buildPlaza(o: PlazaIn): Plaza {
   }
   dressPlazaGarden({ field, b, kit, glow, low, src, paved });
 
-  // On low the painted mandala (lake.ts: one draw of its own) is left out: its lines instead, thin gilt strips in the kit.
-  if (low) mandalaLines(kit, LAKE_MANDALA.x, g0 + TOP + 0.03, LAKE_MANDALA.z, LAKE_MANDALA.r, fr.yaw);
-
   const blocks = b.boxes.length - n0;
   console.info(`[map] nye lake plaza: ${blocks} blocks (pavers ${pavers}, gate ${gate.blocks}, salas and stalls ${salas.blocks}), ${LAKE_PILLARS.length} fire pillars, ${ties.length} lamp posts`);
-  return { blocks, mandala: { x: LAKE_MANDALA.x, y: g0 + TOP + 0.035, z: LAKE_MANDALA.z, r: LAKE_MANDALA.r }, naga: gate.naga, front, paved };
-}
-
-/**
- * The lotus mandala as glowing gilt lines in the kit (the low level's: no draw of its own), after the Kulen ring's
- * painting (`_sqRing.ts`): a bold rim and a thin one, sixteen lotus petals, a ring, eight inner petals, the heart's
- * ring. Lines are flat strips lying on the pavers, glowing at night.
- */
-function mandalaLines(kit: Kit, x: number, y: number, z: number, r: number, turn: number): void {
-  const s = r / 8.5;
-  const P = (rad: number, a: number): [number, number] => [x + Math.cos(a + turn) * rad, z + Math.sin(a + turn) * rad];
-  const line = (p: [number, number], q: [number, number], w: number) => {
-    const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
-    if (len < 0.02) return;
-    kit.box((p[0] + q[0]) / 2, y, (p[1] + q[1]) / 2, len + w * 0.6, 0.02, w, 0xe8b24a, { yaw: Math.atan2(q[0] - p[0], q[1] - p[1]) - Math.PI / 2, glow: 0.75 });
-  };
-  const circle = (rad: number, w: number, n: number) => {
-    for (let i = 0; i < n; i++) line(P(rad, (i / n) * Math.PI * 2), P(rad, ((i + 1) / n) * Math.PI * 2), w);
-  };
-  /** A pointed petal at angle a from r0 to r1, `w` radians either side at its base: two curved sides of `k` strips. */
-  const petal = (a: number, r0: number, r1: number, w: number, k: number, lw: number) => {
-    for (const side of [-1, 1]) {
-      let prev = P(r0, a + side * w);
-      for (let i = 1; i <= k; i++) {
-        const t = i / k;
-        // (bulging out past its base, then drawing in to the tip)
-        const spread = w * (1 + 0.5 * Math.sin(Math.PI * t * 0.8)) * (1 - t);
-        const p = P(r0 + (r1 - r0) * t, a + side * spread);
-        line(prev, p, lw);
-        prev = p;
-      }
-    }
-  };
-  circle(r, 0.18 * s, 48);
-  circle(r - 0.45 * s, 0.07 * s, 40);
-  circle(r - 1.6 * s, 0.09 * s, 36);
-  for (let i = 0; i < 16; i++) petal(((i + 0.5) / 16) * Math.PI * 2, 3.4 * s, r - 1.85 * s, (Math.PI / 16) * 0.9, 3, 0.1 * s);
-  circle(3.1 * s, 0.09 * s, 24);
-  for (let i = 0; i < 8; i++) petal((i / 8) * Math.PI * 2, 1.6 * s, 2.95 * s, (Math.PI / 8) * 0.85, 2, 0.09 * s);
-  circle(1.45 * s, 0.08 * s, 16);
+  return { blocks, mandala: { x: LAKE_MANDALA.x, y: g0 + TOP + 0.035, z: LAKE_MANDALA.z, r: LAKE_MANDALA.r }, naga: gate.naga, front, paved, pools };
 }
