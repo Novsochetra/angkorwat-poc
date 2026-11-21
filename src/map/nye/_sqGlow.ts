@@ -31,7 +31,7 @@ import { hazeUniforms } from '../sky/haze';
 import type { MapContext, MapFrame } from '../types';
 import { nightHeld, nyeSeconds } from './clock';
 import { BOARD, GATE, GROUND, LANTERN_WALK, onSquare, RING, SQUARE, STAGE, STALLS } from './plan';
-import { buildSquareEdge } from './_sqEdge';
+import { buildSquareEdge, gatheringPillars } from './_sqEdge';
 import { INLAY, TOP } from './_sqFloor';
 import { AVENUE, onAvenue } from './_sqWalk';
 import { GOLD, LATERITE, pick } from './_sqKit';
@@ -93,21 +93,23 @@ const LANTERN = [0xffb44a, 0xff9a36, 0xffc45c, 0xffa848, 0xff9c8c];
 /** A string bulb's brightness against a lantern's (its colour × this; at night the bodies go over 1.0: the bloom). */
 const BULB_LEVEL = 1.0;
 /** The halos' size limits on the screen (a share of the picture's height): a bulb's, a lamp's or lantern's. */
-const HALO_BULB = 0.022;
+const HALO_BULB = 0.014;
 const HALO_LAMP = 0.11;
 /** A bulb's size on the screen (a share of the picture's height, as NDC: 2 is the whole height): at least, at most. */
 const BULB_MIN = 0.0045;
-const BULB_MAX = 0.013;
+const BULB_MAX = 0.0105;
 
 /**
  * Bulbs as small bright points: any instance of `material`'s instanced mesh smaller than 0.2 m (a bulb, not a lantern
- * or a strip of light) is scaled about its middle so that it is between ≈ 2 and ≈ 6 px tall on a 940 px picture
+ * or a strip of light) is scaled about its middle so that it is between ≈ 2 and ≈ 5 px tall on a 940 px picture
  * (`BULB_MIN`‥`BULB_MAX` of the screen), however near or far: near ones never swell into discs, far ones never
- * vanish. In the vertex shader (one program for every material given it; the rest of the mesh as it was).
+ * vanish; and the nearer a bulb is than where it reaches its largest, the dimmer (to half), so the bloom round the
+ * nearest ones (at the frame's edge, overhead) stays as small as round the rest. In the shaders (one program for
+ * every material given it; the rest of the mesh as it was).
  */
 export function clampBulbs(material: Material): void {
   material.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader.replace(
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying float vBulbK;').replace(
       '#include <project_vertex>',
       /* glsl */ `
       vec4 mvPosition = vec4(transformed, 1.0);
@@ -119,11 +121,18 @@ export function clampBulbs(material: Material): void {
       mvPosition = modelViewMatrix * mvPosition;
       #ifdef USE_INSTANCING
         float bN = bS * projectionMatrix[1][1] / max(-bC.z, 0.05);
-        float bF = mix(1.0, clamp(bN, ${BULB_MIN.toFixed(4)}, ${BULB_MAX.toFixed(4)}) / max(bN, 1e-5), step(bS, 0.2));
+        float bulb = step(bS, 0.2);
+        float bF = mix(1.0, clamp(bN, ${BULB_MIN.toFixed(4)}, ${BULB_MAX.toFixed(4)}) / max(bN, 1e-5), bulb);
         mvPosition.xyz = bC + (mvPosition.xyz - bC) * bF;
+        vBulbK = 1.0 - 0.5 * bulb * smoothstep(${BULB_MAX.toFixed(4)}, ${(BULB_MAX * 5).toFixed(4)}, bN);
+      #else
+        vBulbK = 1.0;
       #endif
       gl_Position = projectionMatrix * mvPosition;`,
     );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vBulbK;')
+      .replace('#include <opaque_fragment>', 'outgoingLight *= vBulbK;\n#include <opaque_fragment>');
   };
   material.customProgramCacheKey = () => 'nye-bulbs';
 }
@@ -150,16 +159,27 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   // ── The edge: balustrade, pedestal lamps and the lantern pillars' fires ──
   const edge = buildSquareEdge(b, field, low, input.kit ?? null);
   const flames = edge.lamps;
+  // (the pools a little inside the edge: they light the paving, hardly the meadow past the balustrade)
+  const inward = (x: number, z: number, d: number): [number, number] => {
+    const k = d / Math.hypot(x - SQUARE.x, z - SQUARE.z);
+    return [x + (SQUARE.x - x) * k, z + (SQUARE.z - z) * k];
+  };
   for (const [x, y, z] of flames) {
     bodies.add(x, y, z, 0.26, 0.3, 0.26, 0xffb860, 1.1);
     glows.halo(x, y, z, 2.2, 0xffb45a, 0.7, HALO_LAMP);
-    pools.add(x, z, 4.2, 0xffa850, 0.34);
+    pools.add(...inward(x, z, 1.2), 3.6, 0xffa850, 0.34);
   }
+  // (and round the gathering area: lantern pillars, warm light through their lattices)
+  if (input.kit)
+    for (const [x, y, z] of gatheringPillars(b, field, input.kit, low, RING)) {
+      bodies.add(x, y, z, 0.66, 0.7, 0.66, 0xffb45a, 0.95);
+      glows.halo(x, y, z, 3.0, 0xffb45a, 0.7, HALO_LAMP);
+      pools.add(x, z, 3.8, 0xffa850, 0.34);
+    }
   for (const [x, y, z] of edge.fires) {
     glows.halo(x, y, z, 3.0, 0xffa040, 0.75, HALO_LAMP);
     // (a pool mostly on the square's side: past the edge the land often steps up into the garden's banks)
-    const k = 1.4 / Math.hypot(x - SQUARE.x, z - SQUARE.z);
-    pools.add(x + (SQUARE.x - x) * k, z + (SQUARE.z - z) * k, 3.8, 0xffa040, 0.38);
+    pools.add(...inward(x, z, 1.4), 3.8, 0xffa040, 0.38);
   }
 
   // ── Big pools: the square, before the stage, the gate, the stalls; the gilt band ──
@@ -478,7 +498,7 @@ function stringLights(p: V3, q: V3, sag: number, every: number, bodies: Bodies, 
     const y = yAt(u) - 0.08;
     const c = BULB[Math.floor(hash3(x, z, i, 95) * BULB.length) % BULB.length];
     bodies.add(x, y, z, 0.11, 0.13, 0.11, c, BULB_LEVEL * (0.85 + 0.3 * hash3(x, z, i, 96)));
-    if (glows && i % haloEvery === 0) glows.halo(x, y, z, 0.55, c, 0.16, HALO_BULB);
+    if (glows && i % haloEvery === 0) glows.halo(x, y, z, 0.55, c, 0.12, HALO_BULB);
   }
 }
 
@@ -568,6 +588,9 @@ class Pools {
           const h = Math.max(...hs);
           const step = h - Math.min(...hs);
           flat = 1 - Math.min(1, Math.max(0, (step - 0.3) / 0.5));
+          // (on grass a third as bright as on the pale paving: the light is added, not lit, so on dark grass it would
+          // read as an orange wash over the meadow round the square, k-side's foreground; on stone it is the pool)
+          if (!onSquare(px, pz, 0.3) && !onAvenue(px, pz, 0.3)) flat *= 0.22;
           py = h + (onSquare(px, pz, 0.5) ? TOP + 0.05 : 0.12);
         }
         this.pos.push(px, py, pz);

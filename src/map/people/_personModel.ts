@@ -200,6 +200,15 @@ export const POSE = {
    * head bowed a little, breathing, swaying a very little with the chant.
    */
   chant: 27,
+  /**
+   * The roam vong (រាំវង់, New Year's Eve's circle dance round the mandala: people/_nyeGroups.ts): the legs left to the
+   * walk (the scene moves the dancer slowly round the circle), the hands in the Khmer dance's shapes, fingers curved
+   * back (the apsara's hands, `SHOW.dance`): one up by the shoulder, the other low before the waist, changing over
+   * slowly (`P_VONG_A` ‥ `P_VONG_B`, by tables: no GLSL ifs).
+   */
+  vong: 28,
+  /** A hug (two of a family at midnight: the scene stands them close, face to face): arms round the other's shoulders, the head to the side. */
+  hug: 29,
 } as const;
 /** Rowing strokes a second (the `row` pose; a whole number in 600 s, so the clock's wrap does not jump). */
 export const ROW_HZ = 0.9;
@@ -1020,6 +1029,40 @@ const vec3 P_CHANT_ROT[${BONES.length}] = vec3[${BONES.length}](${blessBones({ .
 const vec2 P_CHANT_MOVE[${BONES.length}] = vec2[${BONES.length}](${BONES.map((b) => (b === 'chest' ? 'vec2(0.012, 0.018)' : b === 'head' ? 'vec2(0.0, 0.035)' : 'vec2(0.0)')).join(', ')});
 const float P_CHANT_SWAY = ${CHANT_SWAY.toFixed(7)};
 `;
+/**
+ * The roam vong (`POSE.vong`) and the hug (`POSE.hug`) in tables too: the body and arms with the left hand up
+ * (`A`) and the right (`B`, mirrored), eased between by a slow swing (`VONG_RATE`: whole turns in `CLOCK_WRAP`); the
+ * hug's one shape. The legs stay the walk's (`pFree`).
+ */
+const mirror = (s: Partial<Record<BoneName, V3>>): Partial<Record<BoneName, V3>> => {
+  const o: Partial<Record<BoneName, V3>> = {};
+  const swap: Partial<Record<BoneName, BoneName>> = { armL: 'armR', armR: 'armL', foreL: 'foreR', foreR: 'foreL' };
+  for (const [k, v] of Object.entries(s) as [BoneName, V3][]) o[swap[k] ?? k] = [v[0], -v[1], -v[2]];
+  return o;
+};
+const VONG_A: Partial<Record<BoneName, V3>> = {
+  chest: [0.03, 0.12, -0.04],
+  head: [0.06, -0.2, 0.12],
+  armL: [-0.25, 0.05, 1.42],
+  foreL: [-0.3, 0, 1.5],
+  armR: [-0.55, 0.25, -0.42],
+  foreR: [-1.2, 0, 0],
+};
+const VONG_RATE = wholeTurns(1.15);
+const HUG: Partial<Record<BoneName, V3>> = {
+  chest: [0.14, 0, 0],
+  head: [0.12, 0.35, 0.12],
+  armL: [-1.45, -0.5, 0.05],
+  foreL: [-0.35, -0.9, 0],
+  armR: [-1.3, 0.5, -0.05],
+  foreR: [-0.45, 0.9, 0],
+};
+const GLSL_VONG = /* glsl */ `
+const vec3 P_VONG_A[${BONES.length}] = vec3[${BONES.length}](${blessBones(VONG_A)});
+const vec3 P_VONG_B[${BONES.length}] = vec3[${BONES.length}](${blessBones(mirror(VONG_A))});
+const vec3 P_HUG_ROT[${BONES.length}] = vec3[${BONES.length}](${blessBones(HUG)});
+const float P_VONG_RATE = ${VONG_RATE.toFixed(7)};
+`;
 const GLSL_BLESS = /* glsl */ `
 // The monk's blessing (P_BLESS): his bones at rest and at the tie (a turn a bone), how much the breath (x) and the
 // knot's work (y) move them; the right arm's script: its keys (armR x, y, z; foreR x) and their (time, sprig's tilt).
@@ -1096,6 +1139,7 @@ struct PP {
 };
 ${GLSL_BLESS}
 ${GLSL_CHANT}
+${GLSL_VONG}
 
 float pEase(vec4 c, float d) {
   float k = clamp((uPTime - c.z) / max(d, 1e-3), 0.0, 1.0);
@@ -1516,6 +1560,10 @@ vec3 pRot(int p, int b, PP P) {
     if (b == B_FORER) return vec3(mix(P.bless.w, r.x, P.carry), 0.0, 0.0);
     return r;
   }
+  // The roam vong: the hands' two shapes by the tables, swung over slowly (each dancer a little apart in time);
+  // the hug: its one shape, breathing.
+  if (p == P_VONG) return mix(P_VONG_A[b], P_VONG_B[b], smoothstep(-0.3, 0.3, sin(t * P_VONG_RATE + P.seed * 3.1)));
+  if (p == P_HUG) return P_HUG_ROT[b] + vec3(b == B_CHEST ? 0.015 * br : 0.0, 0.0, 0.0);
   if (p == P_CHANT) {
     // Seated as P_SIT, palms together at the chest, by the table; the breath and the chant's slow sway.
     vec3 r = P_CHANT_ROT[b];
@@ -1530,7 +1578,7 @@ vec3 pFree(int p) {
   if (p == P_STAND) return vec3(1.0, 1.0, 1.0);
   if (p == P_LOOK || p == P_POINT || p == P_WAVE || p == P_NOD) return vec3(1.0, 0.0, 1.0);
   if (p == P_TALK) return vec3(0.0, 1.0, 1.0);
-  if (p == P_PHOTO || p == P_SWEEP || p == P_SAMPEAH || p == P_BOW || p == P_GIVE) return vec3(0.0, 0.0, 1.0);
+  if (p == P_PHOTO || p == P_SWEEP || p == P_SAMPEAH || p == P_BOW || p == P_GIVE || p == P_VONG || p == P_HUG) return vec3(0.0, 0.0, 1.0);
   return vec3(0.0);
 }
 
@@ -1670,7 +1718,7 @@ bool pShowRule(int show, PP P) {
   if (show == SHOW_ALWAYS) return true;
   if (show == SHOW_NOTPHOTO || show == SHOW_PHOTO) return (pWeight(P_PHOTO, P) >= 0.5) == (show == SHOW_PHOTO);
   if (show == SHOW_PALMS || show == SHOW_NOTPALMS) return (pWeight(P_SAMPEAH, P) + pWeight(P_BOW, P) + pWeight(P_KNEEL, P) + pWeight(P_CHANT, P) >= 0.5) == (show == SHOW_PALMS);
-  if (show == SHOW_DANCE) return pWeight(P_DANCE, P) >= 0.5;
+  if (show == SHOW_DANCE) return pWeight(P_DANCE, P) + pWeight(P_VONG, P) >= 0.5;
   if (show == SHOW_HOLDHEAD || show == SHOW_NOTHOLDHEAD) return (pHold(P, C_HEAD, false) >= 0.5) == (show == SHOW_HOLDHEAD);
   if (show == SHOW_HOLDTRAY) return pHold(P, C_TRAY, false) >= 0.5 || (P.ctype == C_TRAY && pWeight(P_GIVE, P) >= 0.5);
   if (show == SHOW_STIR) return pWeight(P_STIR, P) >= 0.5;
@@ -1696,7 +1744,7 @@ mat3 pBoneMat(int b, PP P) {
   bool grip = b == B_GRIPL || b == B_GRIPR;
   bool foot = b == B_FOOTL || b == B_FOOTR;
   // (dancing, the wrists bend back from the forearms, swaying a little: the apsara's hands)
-  if (grip && pWeight(P_DANCE, P) >= 0.5) return pEuler(vec3(-1.25 + 0.15 * sin(P.t * ${DANCE.wrist.toFixed(7)} + P.seed * 6.2831 + float(b)), 0.0, 0.0));
+  if (grip && pWeight(P_DANCE, P) + pWeight(P_VONG, P) >= 0.5) return pEuler(vec3(-1.25 + 0.15 * sin(P.t * ${DANCE.wrist.toFixed(7)} + P.seed * 6.2831 + float(b)), 0.0, 0.0));
   bool left = b == B_GRIPL || b == B_FOOTL;
   float fl = foot ? mix(pFlat(P.from), pFlat(P.to), P.k) : 1.0;
   // (dancing, the foot lifted behind is not kept level: once off the ground it follows the shin, its sole turned up behind)

@@ -36,7 +36,7 @@ import type { WaterLights } from './_lkReflect';
  *   Royal Palace is lit for a festival); a false door and wall lamps on its back, toward the lake;
  * - red banners with the white Angkor Wat on tall lacquered poles either side of the gate (the kit, swaying).
  *
- * What glows (gilt, bulbs, the lamps' glass) goes into the venue's `Bodies` (its bulbs small bright points: lake.ts
+ * What glows (gilt, bulbs, the lamps' glass) goes into the venue's `Bodies` (its bulbs small bright points: _lkKit.ts,
  * `clampBulbs`), the live flames into the festival kit (`_sqKit.ts` `kitFire`: no draw of their own), the halos into its
  * `Glow` and every light's reflection into the water lights (`_lkReflect.ts`), in map metres; the naga's spec in map
  * metres too (lake.ts sculpts it).
@@ -89,7 +89,7 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
     const [mx, my, mz] = P((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
     bodies.add(mx, my, mz, Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0), 0xffc35a, k, yaw);
   };
-  /** A small bulb (warm white), its face toward the shore (a small bright point at any distance: lake.ts `clampBulbs`). */
+  /** A small bulb (warm white), its face toward the shore (a small bright point at any distance: _lkKit.ts `Bodies`, `clampBulbs`). */
   const bulb = (x: number, y: number, z: number, k = 0.6) => {
     const [mx, my, mz] = P(x, y, z);
     bodies.add(mx, my, mz, 0.075, 0.085, 0.075, BULB[Math.floor(hash3(x, y, z, 451) * BULB.length) % BULB.length], k, yaw);

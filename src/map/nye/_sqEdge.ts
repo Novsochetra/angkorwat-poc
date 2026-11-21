@@ -143,35 +143,129 @@ function pillar(b: VoxelBuilder, kit: Kit, x: number, g: number, z: number, low:
   // (the pillar's own frame: its faces along and across `face`)
   const ry = face;
   const st = (i: number) => pick(POST_STONE, x, z, i, 82);
-  b.box(x, g + 0.1, z, 1.0, 0.36, 1.0, pick(LATERITE, x, z, 1, 82), 'mapStone', { src, ry });
-  b.box(x, g + 0.36, z, 0.86, 0.16, 0.86, st(2), 'mapStone', { src, ry, shade: 1.03 });
-  b.box(x, g + 0.5, z, 0.76, 0.12, 0.76, st(3), 'mapStone', { src, ry });
-  const h = 2.0;
-  b.box(x, g + 0.56 + h / 2, z, 0.64, h, 0.64, st(4), 'mapStone', { src, ry });
-  // A sunk panel on each face (a darker stone a hair inside the shaft's face, framed by it).
+  // (chunky, as the owner's sheet's posts: a shaft 0.84 m square on a 1.2 m foot)
+  b.box(x, g + 0.1, z, 1.2, 0.4, 1.2, pick(LATERITE, x, z, 1, 82), 'mapStone', { src, ry });
+  b.box(x, g + 0.38, z, 1.04, 0.18, 1.04, st(2), 'mapStone', { src, ry, shade: 1.03 });
+  b.box(x, g + 0.53, z, 0.94, 0.12, 0.94, st(3), 'mapStone', { src, ry });
+  const h = 1.9;
+  b.box(x, g + 0.59 + h / 2, z, 0.84, h, 0.84, st(4), 'mapStone', { src, ry });
+  // A raised panel on each face (a darker stone, framed by the shaft's edges).
   if (!low) {
-    b.box(x, g + 0.56 + h * 0.5, z, 0.68, h * 0.78, 0.44, pick(SHADOW_STONE, x, z, 5, 82), 'mapStone', { src, ry, shade: 0.92 });
-    b.box(x, g + 0.56 + h * 0.5, z, 0.44, h * 0.78, 0.68, pick(SHADOW_STONE, x, z, 6, 82), 'mapStone', { src, ry, shade: 0.92 });
+    b.box(x, g + 0.59 + h * 0.5, z, 0.88, h * 0.78, 0.58, pick(SHADOW_STONE, x, z, 5, 82), 'mapStone', { src, ry, shade: 0.92 });
+    b.box(x, g + 0.59 + h * 0.5, z, 0.58, h * 0.78, 0.88, pick(SHADOW_STONE, x, z, 6, 82), 'mapStone', { src, ry, shade: 0.92 });
   }
   // The capital: a lotus cushion, a broad abacus.
-  let y = g + 0.56 + h;
-  b.box(x, y + 0.06, z, 0.74, 0.12, 0.74, st(7), 'mapStone', { src, ry, shade: 1.04 });
-  b.box(x, y + 0.17, z, 0.88, 0.1, 0.88, st(8), 'mapStone', { src, ry, shade: 1.06 });
-  b.box(x, y + 0.26, z, 0.7, 0.08, 0.7, st(9), 'mapStone', { src, ry });
-  y += 0.3;
+  let y = g + 0.59 + h;
+  b.box(x, y + 0.07, z, 0.96, 0.14, 0.96, st(7), 'mapStone', { src, ry, shade: 1.04 });
+  b.box(x, y + 0.19, z, 1.1, 0.1, 1.1, st(8), 'mapStone', { src, ry, shade: 1.06 });
+  b.box(x, y + 0.28, z, 0.88, 0.08, 0.88, st(9), 'mapStone', { src, ry });
+  y += 0.32;
   // The bowl: a foot, the bowl flaring, its rim.
-  b.box(x, y + 0.06, z, 0.36, 0.12, 0.36, pick(BRONZE, x, z, 10, 82), 'mapStone', { src, ry });
-  b.box(x, y + 0.18, z, 0.6, 0.14, 0.6, pick(BRONZE, x, z, 11, 82), 'mapStone', { src, ry, shade: 0.92 });
-  b.box(x, y + 0.29, z, 0.76, 0.08, 0.76, pick(BRONZE, x, z, 12, 82), 'mapStone', { src, ry, shade: 1.05 });
-  const rim = y + 0.31;
-  kitFire(kit, x, rim, z, 1, seed);
+  b.box(x, y + 0.07, z, 0.44, 0.14, 0.44, pick(BRONZE, x, z, 10, 82), 'mapStone', { src, ry });
+  b.box(x, y + 0.21, z, 0.74, 0.16, 0.74, pick(BRONZE, x, z, 11, 82), 'mapStone', { src, ry, shade: 0.92 });
+  b.box(x, y + 0.33, z, 0.92, 0.08, 0.92, pick(BRONZE, x, z, 12, 82), 'mapStone', { src, ry, shade: 1.05 });
+  const rim = y + 0.35;
+  kitFire(kit, x, rim, z, 1.2, seed);
   // The banner on the face toward the square, from a gilt bar under the capital.
   const fx = Math.sin(face);
   const fz = Math.cos(face);
-  const bar = g + 0.56 + h - 0.06;
-  b.box(x + fx * 0.36, bar, z + fz * 0.36, 0.78, 0.07, 0.07, 0xd9a93a, 'mapStone', { src, ry, shade: 1.08 });
-  hangingBanner(kit, x + fx * 0.37, bar - 0.04, z + fz * 0.37, face, 0.66, 1.62, low, seed);
-  return [x, rim + 0.3, z];
+  const bar = g + 0.59 + h - 0.06;
+  b.box(x + fx * 0.46, bar, z + fz * 0.46, 0.9, 0.07, 0.07, 0xd9a93a, 'mapStone', { src, ry, shade: 1.08 });
+  hangingBanner(kit, x + fx * 0.47, bar - 0.04, z + fz * 0.47, face, 0.76, 1.55, low, seed);
+  return [x, rim + 0.36, z];
+}
+
+/**
+ * Where the gathering area's lantern pillars stand (θ degrees round the ring from +x, +z south), 20.6 m out: in the
+ * four wide gaps the night's crowd leaves round it (people/_nyePlan.ts `planCrowd`, checked: every spot ≥ 5.7 m and
+ * every walk-in route ≥ 4 m away), two flanking the stage's side of the circle, two its gate side.
+ */
+const GATHER_PILLARS = [-150, -30, 160, 20];
+const GATHER_R = 20.6;
+
+/**
+ * The gathering area's lantern pillars (the owner's sheet, "PLAYER GATHERING AREA": chunky stone posts whose top is
+ * a lantern, warm light through its carved windows, a red banner on the face): a laterite foot, a moulded base, a
+ * shaft 0.9 m square, a lotus capital, the lantern — four corner posts round a glowing core seen through a stone
+ * lattice on each face (two uprights and a bar) — under a little Angkor tower top with a gilt lotus bud, ≈ 3.3 m in
+ * all; the banner on the face toward the ring. Returns the lanterns' cores (world m) for the glowing bodies, halos
+ * and pools (`_sqGlow.ts`).
+ */
+export function gatheringPillars(b: VoxelBuilder, field: HeightField, kit: Kit, low: boolean, ring: { x: number; z: number }): [number, number, number][] {
+  const src = traceSource();
+  const cores: [number, number, number][] = [];
+  for (const [i, th] of GATHER_PILLARS.entries()) {
+    const a = (th * Math.PI) / 180;
+    const x = ring.x + Math.cos(a) * GATHER_R;
+    const z = ring.z + Math.sin(a) * GATHER_R;
+    const g = field.heightAt(x, z) + TOP;
+    const face = Math.atan2(ring.x - x, ring.z - z);
+    const ry = face;
+    const st = (k: number) => pick(POST_STONE, x, z, k, 83);
+    b.box(x, g + 0.1, z, 1.3, 0.4, 1.3, pick(LATERITE, x, z, 1, 83), 'mapStone', { src, ry });
+    b.box(x, g + 0.39, z, 1.12, 0.18, 1.12, st(2), 'mapStone', { src, ry, shade: 1.03 });
+    b.box(x, g + 0.54, z, 1.0, 0.12, 1.0, st(3), 'mapStone', { src, ry });
+    const h = 1.35;
+    const y0 = g + 0.6;
+    b.box(x, y0 + h / 2, z, 0.9, h, 0.9, st(4), 'mapStone', { src, ry });
+    if (!low) {
+      b.box(x, y0 + h * 0.5, z, 0.94, h * 0.74, 0.62, pick(SHADOW_STONE, x, z, 5, 83), 'mapStone', { src, ry, shade: 0.92 });
+      b.box(x, y0 + h * 0.5, z, 0.62, h * 0.74, 0.94, pick(SHADOW_STONE, x, z, 6, 83), 'mapStone', { src, ry, shade: 0.92 });
+    }
+    // The capital.
+    let y = y0 + h;
+    b.box(x, y + 0.07, z, 1.0, 0.14, 1.0, st(7), 'mapStone', { src, ry, shade: 1.04 });
+    b.box(x, y + 0.19, z, 1.12, 0.1, 1.12, st(8), 'mapStone', { src, ry, shade: 1.06 });
+    y += 0.24;
+    // The lantern: a sill, four corner posts, the lattice on each face, a lintel; the glowing core inside.
+    const lh = 0.78;
+    b.box(x, y + 0.04, z, 1.02, 0.08, 1.02, st(9), 'mapStone', { src, ry });
+    const c = Math.cos(ry);
+    const s = Math.sin(ry);
+    // (a point in the pillar's own frame: u across its face, w out of it)
+    const at = (u: number, w: number): [number, number] => [x + u * c + w * s, z - u * s + w * c];
+    for (const [u, w] of [
+      [-0.42, -0.42],
+      [0.42, -0.42],
+      [-0.42, 0.42],
+      [0.42, 0.42],
+    ]) {
+      const [px, pz] = at(u, w);
+      b.box(px, y + 0.08 + lh / 2, pz, 0.18, lh, 0.18, st(10), 'mapStone', { src, ry });
+    }
+    const lattice = pick(SHADOW_STONE, x, z, 11, 83);
+    for (const side of [0, 1, 2, 3]) {
+      const turn = ry + (side * Math.PI) / 2;
+      const cs = Math.cos(turn);
+      const sn = Math.sin(turn);
+      const on = (u: number): [number, number] => [x + u * cs + 0.4 * sn, z - u * sn + 0.4 * cs];
+      for (const u of [-0.12, 0.12]) {
+        const [px, pz] = on(u);
+        b.box(px, y + 0.08 + lh / 2, pz, 0.06, lh, 0.05, lattice, 'mapStone', { src, ry: turn, shade: 0.9 });
+      }
+      const [mx, mz] = on(0);
+      b.box(mx, y + 0.08 + lh * 0.55, mz, 0.66, 0.06, 0.05, lattice, 'mapStone', { src, ry: turn, shade: 0.9 });
+    }
+    cores.push([x, y + 0.08 + lh / 2, z]);
+    y += 0.08 + lh;
+    b.box(x, y + 0.05, z, 1.08, 0.1, 1.08, st(12), 'mapStone', { src, ry, shade: 1.04 });
+    y += 0.1;
+    // The tower top: three corbelled tiers drawing in, the gilt lotus bud.
+    for (const [k, w] of [0.84, 0.62, 0.42].entries()) {
+      b.box(x, y + 0.08, z, w, 0.16, w, st(13 + k), 'mapStone', { src, ry, shade: 1 + 0.03 * k });
+      y += 0.16;
+    }
+    b.box(x, y + 0.1, z, 0.22, 0.2, 0.22, 0xd9a93a, 'mapStone', { src, ry, shade: 1.08 });
+    b.box(x, y + 0.26, z, 0.1, 0.14, 0.1, 0xe3b44a, 'mapStone', { src, ry, shade: 1.12 });
+    // The banner on the face toward the ring, from a gilt bar under the capital.
+    const [bx, bz] = at(0, 0.48);
+    const bar = y0 + h - 0.06;
+    b.box(bx, bar, bz, 0.94, 0.07, 0.07, 0xd9a93a, 'mapStone', { src, ry, shade: 1.08 });
+    const [cx, cz] = at(0, 0.49);
+    hangingBanner(kit, cx, bar - 0.04, cz, face, 0.8, 1.18, low, 90 + i, 0.02);
+    field.occupy(x - 0.7, z - 0.7, x + 0.7, z + 0.7);
+  }
+  return cores;
 }
 
 const norm = (th: number): number => ((th % 360) + 360) % 360;

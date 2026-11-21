@@ -65,7 +65,8 @@ export const ANIM = {
   wake: 6,
   /**
    * A flame's tongue (a fire bowl, a brazier): stands on its foot and leaps, narrows as it leaps, sways at its tip, and
-   * its glow flickers with it. `a` = (leap 0‥1, phase rad, speed rad/s: whole turns in `PERIOD`, `perPeriod`).
+   * its glow flickers with it. `a` = (leap 0‥1, phase rad, speed rad/s: whole turns in `PERIOD`, `perPeriod`); a leap
+   * of 0 keeps the box still and only flickers its glow (a lamp's light).
    */
   flame: 7,
 } as const;
@@ -213,8 +214,10 @@ vec3 kitPos(vec3 p, inout vec3 n) {
     float up = p.y + 0.5;
     q.y = (up * (1.0 + iAnim.y * (f - 0.5) * 2.0) - 0.5) * size.y;
     q.xz *= 1.0 - 0.35 * up * iAnim.y * f;
-    q.x += 0.12 * size.y * up * up * sin(w * 1.3 + 0.6);
-    q.z += 0.1 * size.y * up * up * sin(w * 0.9 + 2.1);
+    // (the sway as big as the leap allows: a leap of 0 is a still lamp's glow, only flickering)
+    float sw = min(1.0, iAnim.y * 2.0);
+    q.x += 0.12 * size.y * up * up * sin(w * 1.3 + 0.6) * sw;
+    q.z += 0.1 * size.y * up * up * sin(w * 0.9 + 2.1) * sw;
     kFlick = 0.8 + 0.4 * f;
   }
   vec3 local = c + R * (q * sc);
