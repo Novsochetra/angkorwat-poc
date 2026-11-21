@@ -1292,8 +1292,9 @@ if (shot) {
         graphics: () => `${graphicsNow.level}${settings.graphics === 'auto' ? ' (auto)' : ''} · ${canvas.width}×${canvas.height}`,
         sound: () => {
           const d = audio.debug?.();
-          return d && d.state !== 'none' ? { rate: d.rate, state: d.state } : null;
+          return d && d.state !== 'none' ? { rate: d.rate, state: d.state, mb: d.buffersMB } : null;
         },
+        scene,
         open: settings.fpsPanel,
       });
     });

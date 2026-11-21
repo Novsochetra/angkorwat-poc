@@ -1,11 +1,12 @@
-import type { WebGLRenderer } from 'three';
+import type { BufferGeometry, Material, Object3D, Texture, WebGLRenderer } from 'three';
 
 /**
  * The frame rate panel: frames a second, each frame's time and the worst of the last second, a graph of the last
  * 4 seconds (lines at 60 and 30 a second), the page's own JS time a frame (the map's step and its draw: what the CPU
  * spends; the rest of a slow frame is the GPU or the browser), the loop's cap and pace (idle and an unfocused window
  * draw fewer frames on purpose), the graphics level and drawing size, draws and triangles a frame (the shadow pass
- * and the effects too), the JS heap (Chrome), what three keeps on the GPU, and the sound's rate.
+ * and the effects too), memory (the JS heap in Chrome, what the GPU keeps, estimated, the made sounds: the game's own
+ * share; the tab's whole number is more and a page cannot read it), and the sound's rate.
  *
  * Shown by default, for every player: Settings › Graphics › "Show the frame rate" hides it (`fpsPanel`; `stats=0|1`
  * in the URL). Never in a shot, under the free camera or the story. A drag (mouse or finger) moves it anywhere, and
@@ -28,8 +29,10 @@ export interface StatsHooks {
   loop: () => { fps: number; mode: string } | null;
   /** Graphics level, and the scene's drawing size (px). */
   graphics: () => string;
-  /** The sound: its rate (Hz) and state, or null before it starts. */
-  sound: () => { rate: number; state: string } | null;
+  /** The sound: its rate (Hz), state and its made buffers' memory (MB), or null before it starts. */
+  sound: () => { rate: number; state: string; mb: number } | null;
+  /** The map's scene: what it keeps on the GPU is added up from it (`gpuMemory`). */
+  scene: Object3D;
   /** Shown at once (the setting). */
   open: boolean;
 }
@@ -38,6 +41,50 @@ export interface StatsHooks {
 const PLACE = 'angkor-map-stats-at';
 /** A press that moves less than this (px) is a tap: it folds the panel. */
 const TAP = 5;
+/** The GPU memory estimate is made again this often (ms): a walk over the scene, ≈ 1.5 ms on an M1 Max (more on a phone). */
+const GPU_EVERY = 10000;
+
+/**
+ * What the scene keeps on the GPU, estimated (MB): every geometry's buffers once (its attributes, index and an
+ * instanced mesh's matrices and colours) and every texture once (its pixels, a third more with mipmaps). Without
+ * the drawing targets (the picture, its effects, the shadow map) and the browser's own: the tab's whole memory is
+ * more, and a page cannot read it.
+ */
+export function gpuMemory(scene: Object3D): { meshes: number; textures: number } {
+  const geos = new Set<BufferGeometry>();
+  const texs = new Set<Texture>();
+  let inst = 0;
+  const mats = new Set<Material>();
+  scene.traverse((o) => {
+    const m = o as Object3D & { geometry?: BufferGeometry; material?: Material | Material[]; instanceMatrix?: { array: ArrayLike<number> & { byteLength: number } }; instanceColor?: { array: { byteLength: number } } | null };
+    if (m.geometry) geos.add(m.geometry);
+    if (m.instanceMatrix) inst += m.instanceMatrix.array.byteLength + (m.instanceColor?.array.byteLength ?? 0);
+    if (m.material) for (const mt of Array.isArray(m.material) ? m.material : [m.material]) mats.add(mt);
+  });
+  let meshes = inst;
+  for (const g of geos) {
+    for (const a of Object.values(g.attributes)) {
+      const arr = (a as { array?: { byteLength: number }; data?: { array: { byteLength: number } } }).data?.array ?? (a as { array?: { byteLength: number } }).array;
+      meshes += arr?.byteLength ?? 0;
+    }
+    meshes += g.index?.array.byteLength ?? 0;
+  }
+  const isTex = (v: unknown): v is Texture => !!v && typeof v === 'object' && (v as Texture).isTexture === true;
+  for (const mt of mats) {
+    for (const v of Object.values(mt)) if (isTex(v)) texs.add(v);
+    const u = (mt as Material & { uniforms?: Record<string, { value: unknown }> }).uniforms;
+    if (u) for (const k in u) if (isTex(u[k]?.value)) texs.add(u[k].value as Texture);
+  }
+  let textures = 0;
+  for (const t of texs) {
+    const img = t.image as { width?: number; height?: number; depth?: number; data?: { byteLength: number } } | null;
+    if (!img) continue;
+    const bytes = img.data?.byteLength ?? (img.width ?? 0) * (img.height ?? 0) * (img.depth ?? 1) * 4;
+    textures += t.generateMipmaps ? bytes * 1.33 : bytes;
+  }
+  return { meshes: meshes / 2 ** 20, textures: textures / 2 ** 20 };
+}
+
 /** Frames kept for the graph (≈ 4 s at 60). */
 const N = 240;
 
@@ -55,6 +102,8 @@ export function installStats(h: StatsHooks): FrameStats {
   let folded = false;
   let draws = 0;
   let tris = 0;
+  let gpu: { meshes: number; textures: number } | null = null;
+  let gpuAt = -Infinity;
 
   const panel = document.createElement('div');
   panel.className = 'st-fps';
@@ -186,7 +235,7 @@ export function installStats(h: StatsHooks): FrameStats {
     const fps = n && sum > 0 ? (1000 * n) / sum : 0;
     top.innerHTML = `<b class="${cls(avg, cap)}">${fps.toFixed(0)}</b> fps · ${avg.toFixed(1)} ms <span class="${cls(worst, cap)}">(worst ${worst.toFixed(0)})</span>`;
     if (folded) return;
-    const mem = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
+    const mem = (performance as Performance & { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
     const gm = h.renderer.info.memory;
     const s = h.sound();
     const lines = [
@@ -195,10 +244,36 @@ export function installStats(h: StatsHooks): FrameStats {
       `Look  ${h.graphics()}`,
       `Draw  ${draws} calls · ${(tris / 1e6).toFixed(2)} M tris`,
       `GPU   ${gm.geometries} geometries · ${gm.textures} textures`,
-      ...(mem ? [`Heap  ${(mem.usedJSHeapSize / 2 ** 20).toFixed(0)} MB (JS)`] : []),
+      ...memLines(mem, s),
       `Sound ${s ? `${(s.rate / 1000).toFixed(0)} kHz · ${s.state}` : 'not started'}`,
     ];
     rest.textContent = lines.join('\n');
+  }
+
+  /**
+   * Memory: the JS heap (Chrome: used of its limit), what the GPU keeps (meshes and textures, estimated: `gpuMemory`)
+   * and the made sounds. Their sum is the game's own share; the tab's number in the browser is more.
+   */
+  function memLines(mem: { usedJSHeapSize: number; jsHeapSizeLimit?: number } | undefined, s: { mb: number } | null): string[] {
+    const t = performance.now();
+    if (t - gpuAt > GPU_EVERY) {
+      gpuAt = t;
+      try {
+        gpu = gpuMemory(h.scene);
+      } catch {
+        gpu = null;
+      }
+    }
+    const js = mem ? mem.usedJSHeapSize / 2 ** 20 : 0;
+    const g = gpu ? gpu.meshes + gpu.textures : 0;
+    const snd = s?.mb ?? 0;
+    const mb = (v: number) => (v >= 1024 ? `${(v / 1024).toFixed(2)} GB` : `${v.toFixed(0)} MB`);
+    return [
+      `Mem   ${mb(js + g + snd)} (game's own)`,
+      ...(mem ? [`      JS ${mb(js)}${mem.jsHeapSizeLimit ? ` of ${mb(mem.jsHeapSizeLimit / 2 ** 20)}` : ''}`] : []),
+      ...(gpu ? [`      GPU ≈ ${mb(g)} (meshes ${mb(gpu.meshes)} · tex ${mb(gpu.textures)})`] : []),
+      `      sound ${mb(snd)}`,
+    ];
   }
 
   function draw(cap: number): void {

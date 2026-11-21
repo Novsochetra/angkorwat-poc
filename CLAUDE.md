@@ -165,7 +165,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - The frame rate panel (`src/map/ui/fpsPanel.ts`), shown by default to every player (Settings › Graphics ›
   "Show the frame rate" hides it; `stats=0|1` in the URL; never in a shot, the free camera or the story): frames a
   second, frame time and the worst, a graph, the page's JS time a frame, the loop's pace, level and size, draws and
-  triangles, JS heap, the sound's rate; a drag moves it (kept), a tap folds it.
+  triangles, memory (the game's own share: the JS heap, what the GPU keeps, estimated every 10 s by `gpuMemory`,
+  and the made sound buffers; the tab's whole number is more and a page cannot read it), the sound's rate; a drag
+  moves it (kept), a tap folds it.
 - The console line `[map] built in …` lists build times and blocks per part,
   and names any part that failed (the rest of the map still loads);
   `[map] shaders compiled in N ms` follows. `window.__frame` is the live

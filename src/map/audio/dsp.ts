@@ -106,6 +106,13 @@ export type Job = Generator<void, AudioBuffer, void>;
 const ready = new Map<string, AudioBuffer>();
 const jobs = new Map<string, Job>();
 
+/** Bytes held by the buffers made so far (noise, insects, the reverb, voices, shouts): the frame rate panel's sound memory. */
+export function madeBytes(): number {
+  let b = 0;
+  for (const v of ready.values()) b += v.length * v.numberOfChannels * 4;
+  return b;
+}
+
 /** Whether the buffer under `key` is made (a big one is better left out than made at once in a frame). */
 export const isMade = (key: string): boolean => ready.has(key);
 

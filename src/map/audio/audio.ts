@@ -2,7 +2,7 @@ import { eventsNow } from '../events';
 import type { HeightField } from '../heightfield';
 import { DEFAULT_SETTINGS, VOLUME_KEYS, type AnimalCall, type Duck, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type TypeKey, type UISound, type VolumeKey } from '../types';
 import { PHONE, frameCap, graphicsNow } from '../graphics';
-import { SOURCE_KEYS, setLiveRate, warmUp } from './dsp';
+import { madeBytes, SOURCE_KEYS, setLiveRate, warmUp } from './dsp';
 import { makeOffThread, offThreadStats } from './offThread';
 import { FestivalSound } from './festival';
 import { FireworksSound } from './fireworks';
@@ -102,6 +102,8 @@ export interface AudioDebug {
   /** The context's sample rate (Hz: `contextRate`), and the buffers the synth worker made (offThread.ts). */
   rate: number;
   offThread: { made: number; ms: number; failed: boolean };
+  /** Memory held by the made sound buffers (MB: dsp.ts `madeBytes`; the recordings apart). */
+  buffersMB: number;
 }
 
 /** How far ahead voices are scheduled (s), and how often the scheduler runs (ms). */
@@ -528,7 +530,7 @@ export function createMapAudio(): MapAudio {
       const gains = { master: round(engine ? engine.master.gain.value : volumes.master ** 2) } as Record<VolumeKey, number>;
       for (const b of BUSES) gains[b] = round(engine ? engine.bus[b].dry.gain.value : volumes[b] ** 2);
       const steps = footstepsState();
-      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) }, duck: ducked, duckLevel: round(engine?.duckLevel ?? 1), typewriter: typewriterState().state, strikes: typewriterState().strikes, fireworks: { ...(fireworks?.played ?? {}) }, rate: ctx?.sampleRate ?? 0, offThread: { ...offThreadStats } };
+      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) }, duck: ducked, duckLevel: round(engine?.duckLevel ?? 1), typewriter: typewriterState().state, strikes: typewriterState().strikes, fireworks: { ...(fireworks?.played ?? {}) }, rate: ctx?.sampleRate ?? 0, offThread: { ...offThreadStats }, buffersMB: madeBytes() / 2 ** 20 };
     },
   };
 }
