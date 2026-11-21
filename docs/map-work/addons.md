@@ -3049,10 +3049,18 @@ sounds `audio/_build.ts`.
   asks the map square by square (then the live rules: level, trees, plants, his pieces and
   buildings, the cart, his cows, the room before a piece). **The cord** is the fence mask's outline
   where it meets past-the-land, a yard or the bank stones (`runs`; not along the trail's or the
-  stream's own sides, nor round islands under 25 m²: a rock, a tree's trunk), so a fence fits along
+  stream's own sides, nor round islands under 25 m²: a rock, a tree's trunk), and **back from the
+  steps**: within 1.5 m of the edge a square where the land steps (over 0.12 m within 0.4 m: a
+  cliff's top, a terrace's lip) is on the edge's side, so the cord runs on flat ground and breaks
+  where the land steps across it (only the cord: the rules are as they were). A fence fits along
   it: a run within 0.55 m of it and within 15° of along it lies just inside, its outer face on the
-  cord (`snapEdge`, `state().placing.edge`; 96 % of the cord takes a 3 m fence at once, the rest
-  is steep along it or shorter than a run). **The red squares** (`_buildLandView.ts`): while he
+  cord, and on a side shorter than a run a new one is as long as the side (`snapEdge`,
+  `state().placing.edge`; 256 of 257 checks along the cord take a fence at once, the last a 1 m
+  side on a step). At a corner two runs laid so meet: runs square to
+  each other join when their ends are within 0.2 m (`CORNER_MEET`, a fence's depth apart), and a
+  run joined end to end that would stand past his land (going on from a fence ending on the cord)
+  is laid just inside the cord instead (reaching 1.2 m for it), with the cord's own reason if it
+  cannot stand there either (the ground), never "past your land". **The red squares** (`_buildLandView.ts`): while he
   builds, what stops the kind he places on his land besides the trail's tread and the water
   itself (their margins, the bank, his house) is a faint red film on the ground. Only the ground
   along a fence's middle must be level (where its posts stand). The map gives every spot the old

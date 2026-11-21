@@ -13,7 +13,10 @@ import { PLOT_BOX } from '../build/plot';
  * - **The cord** (build/plotEdge.ts): the outline of the fence mask where it meets the land's edge, a neighbour's
  *   yard or something standing (the bank stones), as straight runs (`runs`): so the cord he sees is a line a fence
  *   fits along (_build.ts `snapEdge` lays one just inside it). Not along the trail's or the stream's own sides
- *   (they show themselves), nor round small islands (a rock) or his house.
+ *   (they show themselves), nor round small islands (a rock) or his house. **Back from the steps**: near the edge
+ *   (`EDGE_ZONE`), a square where the land steps (more than `STEP_UP` within `STEP_REACH`: a cliff's top, a
+ *   terrace's lip) is the edge's side of the cord, so the cord runs on flat ground, back from a drop, and breaks
+ *   where the land steps across it (a run on each level). Only the cord: the rules are as they were.
  * - **The red squares** (`blockedRuns`): what stops the kind he places on his land besides the trail's tread and the
  *   water itself (their margins, the bank, a rock, his house), drawn faint red while he builds (_buildLandView.ts).
  */
@@ -43,6 +46,8 @@ export interface LandRules {
   house(x: number, z: number): boolean;
   /** Something of the world standing at (x, z) (not his own). */
   thing(x: number, z: number): boolean;
+  /** The land's height at (x, z) (m). */
+  height(x: number, z: number): number;
 }
 
 /** A straight run of the cord: from (x0, z0) to (x1, z1) along x or z, his land on the side `inX`, `inZ` (−1, 0, 1). */
@@ -66,6 +71,20 @@ export interface BlockedRun {
 const ISLAND = 400;
 /** A cord run shorter than this (m) is left out (a corner's tooth). */
 const RUN_MIN = 0.75;
+/** The land steps at a square when its height within `STEP_REACH` m round it differs more than this (m: the rules' level). */
+const STEP_UP = 0.12;
+const STEP_REACH = 0.4;
+/** Steps this near the edge (m: from a square past it, a yard or the bank) keep the cord back; farther in, none. */
+const EDGE_ZONE = 1.5;
+
+/** Where a square's height is read round it for a step (m from its middle). */
+const STEP_AT: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [STEP_REACH, 0],
+  [-STEP_REACH, 0],
+  [0, STEP_REACH],
+  [0, -STEP_REACH],
+];
 
 export interface LandMap {
   readonly ready: boolean;
@@ -95,6 +114,8 @@ export function createLandMap(rules: LandRules, inside: (x: number, z: number) =
   const rawPiece = new Uint8Array(n);
   const rawFence = new Uint8Array(n);
   const things = new Uint8Array(n);
+  /** The land steps at the square (a cliff's top, a terrace's lip): the cord keeps back from it near the edge. */
+  const steps = new Uint8Array(n);
   const masks: Record<LandKind, Uint8Array> = { piece: new Uint8Array(n), fence: new Uint8Array(n) };
   let row = 0;
   let done = false;
@@ -128,6 +149,14 @@ export function createLandMap(rules: LandRules, inside: (x: number, z: number) =
       rawPiece[c] = p;
       rawFence[c] = f;
       things[c] = rules.thing(x, z) ? 1 : 0;
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const [dx, dz] of STEP_AT) {
+        const h = rules.height(x + dx, z + dz);
+        if (h < lo) lo = h;
+        if (h > hi) hi = h;
+      }
+      steps[c] = hi - lo > STEP_UP ? 1 : 0;
     }
   }
 
@@ -215,14 +244,17 @@ export function createLandMap(rules: LandRules, inside: (x: number, z: number) =
   /** The cord: edges between a square a fence may take and one stopped by past-the-land, a yard or a thing, merged into runs. */
   function makeRuns(): LandRun[] {
     const small = smallIslands();
-    const okF = (c: number) => c >= 0 && !masks.fence[c] && !(things[c] && !small[c]);
     // (a square past it that the cord runs against: past his land, a yard, or something standing (no small island))
-    const wall = (c: number) => {
+    const hard = (c: number) => {
       if (c < 0) return true;
       const m = masks.fence[c];
       if (m === CODE.plot || m === CODE.yard) return true;
       return !m && !!things[c] && !small[c];
     };
+    // (near that edge, a square where the land steps is on the edge's side too: the cord keeps back on flat ground)
+    const zone = nearEdge(hard);
+    const okF = (c: number) => c >= 0 && !masks.fence[c] && !(things[c] && !small[c]) && !(zone[c] && steps[c]);
+    const wall = (c: number) => hard(c) || (c >= 0 && !!zone[c] && !!steps[c] && !masks.fence[c]);
     const out: LandRun[] = [];
     // Edges along x (between rows k-1 and k), then along z (between columns i-1 and i).
     for (let k = 0; k <= nk; k++) {
@@ -270,6 +302,25 @@ export function createLandMap(rules: LandRules, inside: (x: number, z: number) =
       }
     }
     return out;
+  }
+
+  /** Squares within `EDGE_ZONE` of a square `hard` says the cord runs against. */
+  function nearEdge(hard: (c: number) => boolean): Uint8Array {
+    const zone = new Uint8Array(n);
+    const r = Math.ceil(EDGE_ZONE / LAND_CELL);
+    for (let k = 0; k < nk; k++)
+      for (let i = 0; i < ni; i++) {
+        if (!hard(i + k * ni)) continue;
+        for (let dk = -r; dk <= r; dk++) {
+          const kk = k + dk;
+          if (kk < 0 || kk >= nk) continue;
+          for (let di = -r; di <= r; di++) {
+            const ii = i + di;
+            if (ii >= 0 && ii < ni && di * di + dk * dk <= r * r) zone[ii + kk * ni] = 1;
+          }
+        }
+      }
+    return zone;
   }
 
   /** The red squares for a kind, on his land (or a fence's reach past it): not the trail's tread nor the water itself. */

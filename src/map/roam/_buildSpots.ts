@@ -108,6 +108,8 @@ export function overlapsBuilt(f: Foot, b: Foot): boolean {
 }
 /** Two fence runs' ends meet when this near (m: roam/_build.ts `snapFence` puts them on each other). */
 export const MEET = 0.06;
+/** Two runs square to each other meet at a corner when their ends are this near (m: a fence's depth and a little). */
+const CORNER_MEET = 0.2;
 
 /**
  * A fence run's end on the map (`end` −1 or 1: along its local x; its length its own, a run that closes a gap, or its
@@ -128,11 +130,15 @@ const _eb: [number, number] = [0, 0];
  */
 export function fenceJoint(a: Foot, b: Foot): number {
   if (a.id !== 'fence' || b.id !== 'fence') return 0;
+  // (square to each other: a corner, as two runs laid just inside his land's cord meet, their middles a fence's depth
+  // apart; `CORNER_MEET`)
+  const square = Math.abs(Math.cos(a.yaw - b.yaw)) < 0.2;
   for (let i = -1; i <= 1; i += 2)
     for (let k = -1; k <= 1; k += 2) {
       fenceEnd(a, i, _ea);
       fenceEnd(b, k, _eb);
-      if (Math.hypot(_ea[0] - _eb[0], _ea[1] - _eb[1]) < MEET) return FENCE_JOINT;
+      const d = Math.hypot(_ea[0] - _eb[0], _ea[1] - _eb[1]);
+      if (d < MEET || (square && d < CORNER_MEET)) return FENCE_JOINT;
     }
   return 0;
 }
@@ -296,6 +302,7 @@ export function landMapOf(world: RoamWorld): LandMap {
         if (own.has(cellOf(x) * 65536 + cellOf(z))) return false;
         return base(x, z) - world.field.heightAt(x, z) > THING;
       },
+      height: (x, z) => world.field.heightAt(x, z),
     },
     (x, z) => inPlot(x, z),
   );

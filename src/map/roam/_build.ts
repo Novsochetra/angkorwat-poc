@@ -573,20 +573,20 @@ function shownDeg(id: PieceId, yaw: number): number {
 
 /** Build mode's spot and prompt now (once a step). */
 /** A fence run this near his land's edge (m, its middle to the line) and this close to along it (rad) snaps onto it. */
-const EDGE_SNAP = { m: 0.55, turn: (15 * Math.PI) / 180 };
+const EDGE_SNAP = { m: 0.55, turn: (15 * Math.PI) / 180, fallback: 1.2 };
 /**
  * A fence run near a side of his land (build/plot.ts `PLOT_CORNERS`, the cord he sees while he builds) and turned
  * along it: just inside the side, its outer face on the cord (no gap left, and on the upper side where the edge
  * follows a step of the land), turned exactly along it, kept within the side's length. True: snapped (into `spot`).
  */
-function snapEdge(): boolean {
+function snapEdge(reach: number = EDGE_SNAP.m): boolean {
   const hw = (spot.len ?? PIECES.fence.w) / 2;
   const hd = PIECES.fence.d / 2;
   // (the run's direction: local x along (cos yaw, −sin yaw))
   const dx = Math.cos(spot.yaw);
   const dz = -Math.sin(spot.yaw);
-  let best = EDGE_SNAP.m;
-  let hit: { x: number; z: number; yaw: number } | null = null;
+  let best = reach;
+  let hit: { x: number; z: number; yaw: number; len: number | undefined } | null = null;
   for (const run of land?.runs() ?? []) {
     const ax = run.x0;
     const az = run.z0;
@@ -602,6 +602,8 @@ function snapEdge(): boolean {
     const off = Math.abs((spot.x - ax) * -uz + (spot.z - az) * ux);
     if (off >= best || t < -hw || t > len + hw) continue;
     const tt = len >= hw * 2 ? Math.min(len - hw, Math.max(hw, t)) : len / 2;
+    // (a side shorter than a run: a new one as long as the side, as a run that closes a gap; one he moves keeps its own)
+    const fit = len < hw * 2 && !moving && len >= FENCE_RUN.min ? len : spot.len;
     const yaw = Math.atan2(-uz, ux);
     // (the way round nearer the one he had: its front stays his)
     const flip = dx * ux + dz * uz < 0;
@@ -609,11 +611,12 @@ function snapEdge(): boolean {
     const px = ax + ux * tt;
     const pz = az + uz * tt;
     best = off;
-    hit = { x: px + run.inX * hd, z: pz + run.inZ * hd, yaw: flip ? yaw + Math.PI : yaw };
+    hit = { x: px + run.inX * hd, z: pz + run.inZ * hd, yaw: flip ? yaw + Math.PI : yaw, len: fit };
   }
   if (!hit) return false;
   spot.x = hit.x;
   spot.z = hit.z;
+  spot.len = hit.len;
   spot.yaw = Math.atan2(Math.sin(hit.yaw), Math.cos(hit.yaw));
   return true;
 }
@@ -640,6 +643,7 @@ function placingNow(ctx: RoamCtx): void {
   }
   // (a run he moves keeps its own length unless it snaps to fill a gap)
   spot.len = moving?.len;
+  const free = { x: spot.x, z: spot.z, yaw: spot.yaw, len: spot.len };
   spot.snapped = placing === 'fence' && snapFence(dragged ? spot.yaw : raw);
   // (a fence near his land's edge and along it: on the edge's line)
   spot.edge = placing === 'fence' && !spot.snapped && snapEdge();
@@ -654,6 +658,21 @@ function placingNow(ctx: RoamCtx): void {
     // (a fence run of its own length: one that closes a gap, or stops on another run's line)
     const P = PIECES[placing];
     r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw, moving, spot.len !== undefined ? { w: spot.len, d: P.d, h: P.h } : null);
+    // (joined end to end past his land's edge — a run going on from a fence that ends on the cord —: just inside the cord
+    // instead, if it fits there)
+    if (r && spot.snapped && (r === 'plot' || r === 'yard')) {
+      const was = { x: spot.x, z: spot.z, yaw: spot.yaw, len: spot.len };
+      Object.assign(spot, free);
+      // (as far as a fence end drew it from: `EDGE_SNAP.fallback`)
+      const e = snapEdge(EDGE_SNAP.fallback);
+      const r2 = e ? canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw, moving, spot.len !== undefined ? { w: spot.len, d: P.d, h: P.h } : null) : r;
+      // (on the cord it stands, or says the cord's own reason — the ground, a tree —, not "past your land")
+      if (e) {
+        r = r2;
+        spot.snapped = false;
+        spot.edge = true;
+      } else Object.assign(spot, was);
+    }
     spot.y = ctx.world.field.heightAt(spot.x, spot.z);
   }
   spot.ok = !r;
@@ -1644,7 +1663,9 @@ registerAddon({
             saving: progress.saving,
             busy: env?.busy() ?? null,
           }),
-          canBuild: (id: PieceId, x: number, z: number, yawDeg = 0) => (lastCtx ? canBuild(lastCtx.world, id, x, z, (yawDeg * Math.PI) / 180) : 'no ctx'),
+          // (`len`: a fence run of its own length)
+          canBuild: (id: PieceId, x: number, z: number, yawDeg = 0, len?: number) =>
+            lastCtx ? canBuild(lastCtx.world, id, x, z, (yawDeg * Math.PI) / 180, null, len !== undefined ? { w: len, d: PIECES[id].d, h: PIECES[id].h } : null) : 'no ctx',
           add: (id: PieceId, x: number, z: number, yawDeg = 0, done = 1) => BUILD.add(id, x, env!.world.field.heightAt(x, z), z, (yawDeg * Math.PI) / 180, done)?.uid ?? null,
           remove: (uid: string) => {
             const p = BUILD.byUid(uid);
