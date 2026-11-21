@@ -8,7 +8,8 @@ import type { WebGLRenderer } from 'three';
  * and the effects too), the JS heap (Chrome), what three keeps on the GPU, and the sound's rate.
  *
  * Opened by the 📈 FPS button beside 🐞 Report on the dev server (kept open across reloads), or by `?stats=1` on
- * any page, a build too (a phone on the live site). A tap on its head folds it to its first line. Nothing is sent
+ * any page, a build too (a phone on the live site). A drag (mouse or finger) moves it anywhere, and it opens there
+ * next time; a tap folds it to its first line. Nothing is sent
  * anywhere; it costs a text update twice a second and a small graph four times a second.
  */
 export interface FrameStats {
@@ -34,6 +35,10 @@ export interface StatsHooks {
 }
 
 const KEEP = 'angkor-map-stats';
+/** Where it was dragged to (its top-left corner, CSS px), kept across reloads. */
+const PLACE = 'angkor-map-stats-at';
+/** A press that moves less than this (px) is a tap: it folds the panel. */
+const TAP = 5;
 /** Frames kept for the graph (≈ 4 s at 60). */
 const N = 240;
 
@@ -65,9 +70,10 @@ export function installStats(h: StatsHooks): FrameStats {
   style.textContent = `
     .st-fps { position: fixed; left: 8px; top: 8px; z-index: 45; min-width: 196px; max-width: calc(100vw - 16px); box-sizing: border-box; padding: 6px 8px 7px; border-radius: 8px;
       background: rgba(12, 14, 18, 0.78); color: #e9e4d8; font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
-      pointer-events: auto; cursor: pointer; user-select: none; -webkit-user-select: none; display: none;
+      pointer-events: auto; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; display: none;
       backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
     .st-fps.on { display: block; }
+    .st-fps.dragging { cursor: grabbing; opacity: 0.9; }
     .st-fps-top { font-size: 13px; font-weight: 600; white-space: nowrap; }
     .st-fps-top b { font-size: 15px; }
     .st-fps canvas { display: block; width: 196px; height: 40px; margin: 4px 0 3px; }
@@ -79,10 +85,68 @@ export function installStats(h: StatsHooks): FrameStats {
   `;
   document.head.append(style);
   document.body.append(panel);
-  panel.addEventListener('click', () => {
-    folded = !folded;
-    panel.classList.toggle('folded', folded);
+
+  // Dragged anywhere with a mouse or a finger (kept within the window, and where it was left on the next visit);
+  // a tap folds it.
+  let x = 8;
+  let y = 8;
+  const place = () => {
+    const w = panel.offsetWidth || 196;
+    const hh = panel.offsetHeight || 40;
+    x = Math.max(0, Math.min(innerWidth - w, x));
+    y = Math.max(0, Math.min(innerHeight - hh, y));
+    panel.style.left = `${Math.round(x)}px`;
+    panel.style.top = `${Math.round(y)}px`;
+  };
+  try {
+    const at = JSON.parse(localStorage.getItem(PLACE) ?? 'null') as unknown;
+    if (Array.isArray(at) && at.length === 2 && at.every((v) => Number.isFinite(v))) [x, y] = at as [number, number];
+  } catch {
+    /* (no storage: the corner) */
+  }
+  place();
+  addEventListener('resize', place);
+  let press: { id: number; sx: number; sy: number; x0: number; y0: number; moved: boolean } | null = null;
+  panel.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    // (the map under it never sees the press: no camera drag, no walk)
+    e.stopPropagation();
+    press = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x0: x, y0: y, moved: false };
+    panel.setPointerCapture(e.pointerId);
   });
+  panel.addEventListener('pointermove', (e) => {
+    if (!press || e.pointerId !== press.id) return;
+    e.stopPropagation();
+    const dx = e.clientX - press.sx;
+    const dy = e.clientY - press.sy;
+    if (!press.moved && Math.hypot(dx, dy) < TAP) return;
+    press.moved = true;
+    panel.classList.add('dragging');
+    x = press.x0 + dx;
+    y = press.y0 + dy;
+    place();
+  });
+  const release = (e: PointerEvent) => {
+    if (!press || e.pointerId !== press.id) return;
+    e.stopPropagation();
+    const moved = press.moved;
+    press = null;
+    panel.classList.remove('dragging');
+    if (moved) {
+      try {
+        localStorage.setItem(PLACE, JSON.stringify([Math.round(x), Math.round(y)]));
+      } catch {
+        /* (this visit only) */
+      }
+    } else if (e.type === 'pointerup') {
+      folded = !folded;
+      panel.classList.toggle('folded', folded);
+      // (folded or opened, it may now stick out of the window)
+      requestAnimationFrame(place);
+    }
+  };
+  panel.addEventListener('pointerup', release);
+  panel.addEventListener('pointercancel', release);
 
   let btn: HTMLButtonElement | null = null;
   const setOn = (v: boolean) => {
@@ -91,6 +155,8 @@ export function installStats(h: StatsHooks): FrameStats {
     btn?.classList.toggle('is-on', v);
     // (every pass of the frame counted: the shadow map, the scene, the effects; reset by `begin`)
     h.renderer.info.autoReset = !v;
+    // (shown: its saved place, kept within this window)
+    if (v) requestAnimationFrame(place);
     if (v) {
       head = count = 0;
       lastDrawn = 0;
