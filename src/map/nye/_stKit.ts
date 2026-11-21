@@ -1,17 +1,20 @@
-import { Group, type WebGLRenderer } from 'three';
+import { Group, Sphere, Vector3, type WebGLRenderer } from 'three';
 import type { SourceTrace } from '../../feedback/sourceTrace';
 import type { VoxelMaterialKey } from '../../voxel/materials';
 import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import { ANIM, Kit, kitUniforms, PERIOD, perPeriod } from '../festival/_kit';
 import { GlowBlocks, glowMaterial, haloPoints, pointScale, type Halo } from '../road/glow';
 import { trackSacred } from '../sacred/pending';
 import type { MapFrame } from '../types';
+import { kitFire } from './_sqKit';
 
 /**
  * The stage's small kit (AWP-35, stage.ts): stone courses round a terrace, fire bowls, Khmer lamps (a small
- * Angkor tower over a lantern, as the spirit houses), and the glow they share — flames that flicker and
- * bloom at night, gold edges that read as gilt by day and glow at night, soft halos. No light is added here:
- * the stage's one or two real lights are stage.ts's.
+ * Angkor tower over a lantern, as the spirit houses), and the glow they share — live fires in the fire bowls and
+ * lamps' light that flickers, both in a festival kit of the stage's own (the square's `kitFire`: tongues that leap,
+ * narrow and sway, `ANIM.flame`), gold edges that read as gilt by day and glow at night, soft halos. No light is
+ * added here: the stage's one or two real lights are stage.ts's.
  */
 
 export type Tones = readonly number[];
@@ -22,14 +25,27 @@ export const FLAME = { heart: 0xffa040, tongue: 0xff6a1c, lamp: 0xffa64a } as co
 /** Gilt edges (sRGB). */
 export const GILT = 0xffc35a;
 
-/** What glows on the stage: flames, gilt edges, halos. */
+/** A lamp's light flickers at about 2 rad/s (whole turns in the kit's period). */
+const FLICK = perPeriod(2.1);
+
+/** What glows on the stage: flames and lamps' light (the stage's kit), gilt edges, halos. */
 export class StageGlow {
-  readonly flames = new GlowBlocks();
+  /** The fires and the lamps' light: a festival kit of the stage's own (one draw, as the flames' boxes were). */
+  readonly kit = new Kit();
   readonly gold = new GlowBlocks();
   readonly halos: Halo[] = [];
+  private readonly spots: Vector3[] = [];
 
+  /** A lamp's glowing light (a box, world m): still, its glow flickering softly. */
   flame(x: number, y: number, z: number, sx: number, sy: number, sz: number, color: number, phase: number): void {
-    this.flames.add(x, y, z, sx, sy, sz, 0, color, phase);
+    this.kit.box(x, y, z, sx, sy, sz, color, { glow: 0.42, anim: ANIM.flame, a: [0, phase, FLICK] });
+    this.spots.push(new Vector3(x, y, z));
+  }
+
+  /** A live fire in a bowl whose rim is at (x, y, z), `s` its size (`kitFire`). */
+  fire(x: number, y: number, z: number, s: number, seed: number): void {
+    kitFire(this.kit, x, y, z, s, seed);
+    this.spots.push(new Vector3(x, y + 0.5 * s, z));
   }
 
   halo(x: number, y: number, z: number, size: number, phase = 0): void {
@@ -41,13 +57,19 @@ export class StageGlow {
     this.gold.add((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0), 0, GILT, 0);
   }
 
-  /** The meshes (flames, gilt, halos: three draws) and their brightness from the night. */
+  /** The meshes (the kit of fires and lamps, gilt, halos: three draws) and their brightness from the night. */
   build(renderer: WebGLRenderer, name: string): { object: Group; update(f: MapFrame): void } {
     const object = new Group();
     object.name = `${name}:glow`;
-    const flames = glowMaterial('lamp');
-    flames.material.name = `${name}:flames`;
-    const fm = this.flames.mesh(flames.material, `${name}:flames`);
+    const u = kitUniforms();
+    const km = this.kit.build(`${name}:fires`, u);
+    km.show(true);
+    // (no shadow: it moves, and a fire casts none; culled on the sphere round all it holds, as it is posed in its shader)
+    km.mesh.castShadow = false;
+    const sphere = new Sphere().setFromPoints(this.spots.length ? this.spots : [new Vector3()]);
+    sphere.radius += 2;
+    km.mesh.geometry.boundingSphere = sphere;
+    km.mesh.frustumCulled = true;
     // (gilt: no flicker, softer near the camera at night so a close look still shows the gold)
     const gilt = glowMaterial('lamp');
     gilt.material.name = `${name}:gilt`;
@@ -56,17 +78,22 @@ export class StageGlow {
     const halo = haloPoints(this.halos);
     halo.points.name = `${name}:halos`;
     halo.uniforms.uColor.value.setRGB(1, 0.6, 0.28);
-    object.add(fm, gm, halo.points);
+    object.add(km.mesh, gm, halo.points);
+    let now = 0;
+    let started = false;
     return {
       object,
       update(f) {
+        if (!started) {
+          started = true;
+          now = f.t;
+        } else now += f.dt;
         const n = f.night;
         const k = n * n * (3 - 2 * n);
-        flames.uniforms.uTime.value = f.t;
-        // (bright enough to bloom, not so bright the flames go white: they keep their gold and orange)
-        flames.uniforms.uLevel.value = 0.75 + k * 0.7;
-        flames.uniforms.uPulse.value = 0.12 + k * 0.08;
-        flames.uniforms.uNearLevel.value = 1;
+        // (the kit's clock wraps at its period; its glow as the square's: a little over 1.0 at night, gold and orange)
+        u.uTime.value = ((now % PERIOD) + PERIOD) % PERIOD;
+        u.uNight.value = n;
+        u.uGlow.value = 0.3 + 3.2 * n * n;
         gilt.uniforms.uTime.value = f.t;
         // (gilt lines that read as gold at night, a soft bloom, never a white-hot rim round the board)
         gilt.uniforms.uLevel.value = 0.62 + k * 0.75;
@@ -116,8 +143,8 @@ export function course(m: Mason2, r: { x0: number; x1: number; z0: number; z1: n
 const BRONZE: Tones = [0x5c4430, 0x523c2a, 0x664c36];
 
 /**
- * A fire bowl on a short stone stem (y: the floor it stands on): a bronze bowl of fire, its flame's heart and
- * tongues glowing. `big`: the braziers before the board.
+ * A fire bowl on a short stone stem (y: the floor it stands on): a bronze bowl with a live fire in it (tongues that
+ * leap and sway, in the stage's kit). `big`: the braziers before the board.
  */
 export function fireBowl(m: Mason2, glow: StageGlow, x: number, y: number, z: number, stone: Tones, big = false, phase = 0): void {
   const s = big ? 1.35 : 1;
@@ -127,10 +154,9 @@ export function fireBowl(m: Mason2, glow: StageGlow, x: number, y: number, z: nu
   m.span(x - 0.3 * s, y + 0.7 * s, z - 0.3 * s, x + 0.3 * s, y + 0.86 * s, z + 0.3 * s, pick(BRONZE, 0.3), 'mapStone', 0.9);
   m.span(x - 0.36 * s, y + 0.86 * s, z - 0.36 * s, x + 0.36 * s, y + 0.96 * s, z + 0.36 * s, pick(BRONZE, 0.8), 'mapStone', 0.95);
   const fy = y + 0.96 * s;
-  glow.flame(x, fy + 0.04 * s, z, 0.56 * s, 0.1 * s, 0.56 * s, FLAME.tongue, phase);
-  glow.flame(x, fy + 0.24 * s, z, 0.36 * s, 0.34 * s, 0.36 * s, FLAME.heart, phase + 1.3);
-  glow.flame(x + 0.05 * s, fy + 0.5 * s, z - 0.03 * s, 0.18 * s, 0.26 * s, 0.18 * s, FLAME.tongue, phase + 2.1);
-  glow.halo(x, fy + 0.35 * s, z, big ? 3.6 : 2.6, phase);
+  // (a live fire: tongues leaping out of the bowl, `kitFire`)
+  glow.fire(x, fy - 0.02 * s, z, 1.05 * s, Math.round(phase * 100));
+  glow.halo(x, fy + 0.45 * s, z, big ? 3.6 : 2.6, phase);
 }
 
 /**
