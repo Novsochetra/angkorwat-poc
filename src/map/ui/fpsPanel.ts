@@ -7,13 +7,15 @@ import type { WebGLRenderer } from 'three';
  * draw fewer frames on purpose), the graphics level and drawing size, draws and triangles a frame (the shadow pass
  * and the effects too), the JS heap (Chrome), what three keeps on the GPU, and the sound's rate.
  *
- * Opened by the 📈 FPS button beside 🐞 Report on the dev server (kept open across reloads), or by `?stats=1` on
- * any page, a build too (a phone on the live site). A drag (mouse or finger) moves it anywhere, and it opens there
- * next time; a tap folds it to its first line. Nothing is sent
+ * Shown by default, for every player: Settings › Graphics › "Show the frame rate" hides it (`fpsPanel`; `stats=0|1`
+ * in the URL). Never in a shot, under the free camera or the story. A drag (mouse or finger) moves it anywhere, and
+ * it opens there next time; a tap folds it to its first line. Nothing is sent
  * anywhere; it costs a text update twice a second and a small graph four times a second.
  */
 export interface FrameStats {
   readonly on: boolean;
+  /** Show or hide it (the setting). */
+  show(on: boolean): void;
   /** A frame began (before the map's step). */
   begin(): void;
   /** The frame was drawn (`now`: its rAF time; after the draw). */
@@ -28,13 +30,10 @@ export interface StatsHooks {
   graphics: () => string;
   /** The sound: its rate (Hz) and state, or null before it starts. */
   sound: () => { rate: number; state: string } | null;
-  /** The 📈 FPS button (the dev server). */
-  button: boolean;
-  /** Open at once (`?stats=1`). */
+  /** Shown at once (the setting). */
   open: boolean;
 }
 
-const KEEP = 'angkor-map-stats';
 /** Where it was dragged to (its top-left corner, CSS px), kept across reloads. */
 const PLACE = 'angkor-map-stats-at';
 /** A press that moves less than this (px) is a tap: it folds the panel. */
@@ -80,8 +79,7 @@ export function installStats(h: StatsHooks): FrameStats {
     .st-fps-rest { white-space: pre; color: #cfc8b8; }
     .st-fps.folded canvas, .st-fps.folded .st-fps-rest { display: none; }
     .st-ok { color: #8ff0a0; } .st-meh { color: #ffd76a; } .st-bad { color: #ff8a7a; }
-    .fb-button.st-open { left: 252px !important; }
-    body.freecam .st-open { display: none !important; }
+    body.freecam .st-fps, body.st-on .st-fps { display: none !important; }
   `;
   document.head.append(style);
   document.body.append(panel);
@@ -148,11 +146,9 @@ export function installStats(h: StatsHooks): FrameStats {
   panel.addEventListener('pointerup', release);
   panel.addEventListener('pointercancel', release);
 
-  let btn: HTMLButtonElement | null = null;
   const setOn = (v: boolean) => {
     on = v;
     panel.classList.toggle('on', v);
-    btn?.classList.toggle('is-on', v);
     // (every pass of the frame counted: the shadow map, the scene, the effects; reset by `begin`)
     h.renderer.info.autoReset = !v;
     // (shown: its saved place, kept within this window)
@@ -162,28 +158,7 @@ export function installStats(h: StatsHooks): FrameStats {
       lastDrawn = 0;
     }
   };
-  if (h.button) {
-    btn = document.createElement('button');
-    btn.className = 'fb-button st-open';
-    btn.textContent = '📈 FPS';
-    btn.title = 'Frame rate panel';
-    btn.addEventListener('click', () => {
-      setOn(!on);
-      try {
-        localStorage.setItem(KEEP, on ? '1' : '0');
-      } catch {
-        /* (no storage: not kept) */
-      }
-    });
-    document.body.append(btn);
-  }
-  let kept = false;
-  try {
-    kept = h.button && localStorage.getItem(KEEP) === '1';
-  } catch {
-    /* (no storage) */
-  }
-  setOn(h.open || kept);
+  setOn(h.open);
 
   /** The loop's pace in words (main.ts `pace`): fewer frames on purpose when idle or in the background. */
   const MODE: Record<string, string> = { full: 'full speed', idle: 'resting: no input', blurred: 'window in the back', waiting: 'waiting for Start' };
@@ -266,6 +241,9 @@ export function installStats(h: StatsHooks): FrameStats {
   return {
     get on() {
       return on;
+    },
+    show(v) {
+      if (v !== on) setOn(v);
     },
     begin() {
       if (!on) return;

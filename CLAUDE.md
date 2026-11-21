@@ -162,9 +162,10 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `loadGo` in `lang.ts`) is pressed: that click turns the sound on (browsers
   play none before a click), then the story (first visit) or the map shows
   (`mapReady` / `enter` in `src/map/main.ts`).
-- The frame rate panel (`src/map/dev/stats.ts`): the 📈 FPS button beside 🐞 Report on the dev server, or
-  `?stats=1` on any page (a phone on the live site): frames a second, frame time and the worst, a graph, the
-  page's JS time a frame, the loop's pace, level and size, draws and triangles, JS heap, the sound's rate.
+- The frame rate panel (`src/map/ui/fpsPanel.ts`), shown by default to every player (Settings › Graphics ›
+  "Show the frame rate" hides it; `stats=0|1` in the URL; never in a shot, the free camera or the story): frames a
+  second, frame time and the worst, a graph, the page's JS time a frame, the loop's pace, level and size, draws and
+  triangles, JS heap, the sound's rate; a drag moves it (kept), a tap folds it.
 - The console line `[map] built in …` lists build times and blocks per part,
   and names any part that failed (the rest of the map still loads);
   `[map] shaders compiled in N ms` follows. `window.__frame` is the live

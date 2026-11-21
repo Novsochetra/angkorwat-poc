@@ -333,6 +333,8 @@ export interface MapSettings {
   battery: boolean;
   /** 120 frames a second at most, not 60 (graphics.ts `frameCap`; a computer only: the setting is not shown on a phone; the battery saver wins). */
   fps120: boolean;
+  /** The frame rate panel (ui/fpsPanel.ts): frames a second and what a frame costs, over the map; shown by default. */
+  fpsPanel: boolean;
   /** Short view (shortView.ts): on the ground while roaming the haze closes in and nothing past it is drawn (a phone's frame). */
   shortView: boolean;
   /** The fog's thickness (sky/fogLevel.ts `fogNow.amount`): 0 clear air … 1 the game's own … 1.5 thick; the edges keep their mist. */
@@ -368,7 +370,7 @@ export type WeatherSetting = (typeof WEATHER_SETTINGS)[number];
 export const MOON_PATHS = ['low', 'high'] as const;
 export type MoonPath = (typeof MOON_PATHS)[number];
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, fireworks: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', moonPath: 'low', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, padRumble: true, graphics: 'auto', resolution: 'auto', battery: false, fps120: false, shortView: false, fogAmount: 1 };
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, fireworks: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', moonPath: 'low', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, padRumble: true, graphics: 'auto', resolution: 'auto', battery: false, fps120: false, fpsPanel: true, shortView: false, fogAmount: 1 };
 
 /** The volume settings (sliders), in panel order. */
 export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'fireworks', 'steps', 'moves', 'ui'] as const;

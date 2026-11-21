@@ -128,6 +128,7 @@ function loadSettings(): MapSettings {
     if (saved.resolution !== 'auto' && !isResolutionShare(saved.resolution)) delete saved.resolution;
     if (typeof saved.battery !== 'boolean') delete saved.battery;
     if (typeof saved.fps120 !== 'boolean') delete saved.fps120;
+    if (typeof saved.fpsPanel !== 'boolean') delete saved.fpsPanel;
     if (typeof saved.shortView !== 'boolean') delete saved.shortView;
     if (!MOON_PATHS.includes(saved.moonPath as MoonPath)) delete saved.moonPath;
     // (the fog's step was a setting: it follows the graphics level now, and the fog is one slider, its thickness)
@@ -163,6 +164,7 @@ if (params.get('resolution') === 'auto') settings.resolution = 'auto';
 else if (isResolutionShare(Number(params.get('resolution')))) settings.resolution = Number(params.get('resolution'));
 if (params.has('battery')) settings.battery = params.get('battery') !== '0';
 if (params.has('fps120')) settings.fps120 = params.get('fps120') !== '0';
+if (params.has('stats')) settings.fpsPanel = params.get('stats') !== '0';
 setFastFrames(settings.fps120);
 setBatterySaver(settings.battery);
 if (params.has('shortview')) settings.shortView = params.get('shortview') !== '0';
@@ -541,6 +543,7 @@ const handlers = {
       newLevelRatio();
     }
     if (s.fogAmount !== was.fogAmount) applyFogAmount();
+    if (s.fpsPanel !== was.fpsPanel) stats?.show(s.fpsPanel);
     if (s.fps120 !== was.fps120) {
       setFastFrames(s.fps120);
       autoWatch.reset();
@@ -696,6 +699,8 @@ let videoCam: number[] | null = null;
 let freeCam: number[] | null = null;
 /** The free camera's panel (dev server only; set below, once its module has loaded). */
 let free: import('./dev/freecam').FreeCam | null = null;
+/** The frame rate panel (ui/fpsPanel.ts; loaded as the loop starts, not in a shot). */
+let stats: import('./ui/fpsPanel').FrameStats | null = null;
 // (the weather setting: follow the season, clear, rainy, stormy; a change eases in)
 const weather = createWeather(params, () => settings.weather);
 const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, clock: duskClock(night), day: DAY0, season: SEASON0, weather: { ...CALM_WEATHER }, camera, lightDir: new Vector3(0, 1, 0), listener: new Vector3(), roam: 'overview', roamLevels: { wind: 0, wake: 0, sail: 0 }, calls: [] };
@@ -1278,10 +1283,9 @@ if (shot) {
   /** The loop's state, for checks (scripts/idle.mjs): frames drawn, the pace now. */
   const loop = { drawn: 0, fps: frameCap.fps, mode: 'full' as LoopMode | 'waiting' };
   Object.assign(window, { __loop: loop, __phoneRate: phoneRate });
-  // (the frame rate panel: the 📈 FPS button on the dev server, `?stats=1` on any page: dev/stats.ts)
-  let stats: import('./dev/stats').FrameStats | null = null;
-  if (!shot && (devTools || params.get('stats') === '1'))
-    void import('./dev/stats').then(({ installStats }) => {
+  // (the frame rate panel, shown by default: Settings › Graphics hides it, `stats=0|1`; never in a shot: ui/fpsPanel.ts)
+  if (!shot)
+    void import('./ui/fpsPanel').then(({ installStats }) => {
       stats = installStats({
         renderer,
         loop: () => loop,
@@ -1290,8 +1294,7 @@ if (shot) {
           const d = audio.debug?.();
           return d && d.state !== 'none' ? { rate: d.rate, state: d.state } : null;
         },
-        button: devTools,
-        open: params.get('stats') === '1',
+        open: settings.fpsPanel,
       });
     });
   /** The last frame was at full pace (the resolution and auto's watch measure only such frames). */

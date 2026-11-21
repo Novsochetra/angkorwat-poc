@@ -710,6 +710,9 @@ const WORDS = {
   // (the 120 frames a second switch: a computer only, not shown on a phone; graphics.ts `setFastFrames`)
   fps120: { km: '១២០ រូបភាពក្នុងមួយវិនាទី', en: '120 frames a second' },
   fps120Note: { km: 'កាតក្រាហ្វិកខ្លាំង និងអេក្រង់ 120 Hz៖ រលូនជាង តែក្ដៅជាង', en: 'Strong graphics card and 120 Hz screen: smoother, but hotter' },
+  // (the frame rate panel's switch: ui/fpsPanel.ts)
+  fpsPanel: { km: 'បង្ហាញល្បឿនរូបភាព (FPS)', en: 'Show the frame rate (FPS)' },
+  fpsPanelNote: { km: 'ចំនួនរូបភាពក្នុងមួយវិនាទី និងពេលវេលានៃរូបភាពនីមួយៗ៖ អូសវាទៅកន្លែងណាក៏បាន ចុចម្ដងដើម្បីបង្រួម', en: 'Frames a second and the time of each frame: drag it anywhere, tap to fold it' },
   // (the Short view switch: shortView.ts)
   shortView: { km: 'មើលឃើញជិត', en: 'Short view' },
   // (Auto turned it on: a toast while roaming, main.ts)
