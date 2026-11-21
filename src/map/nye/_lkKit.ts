@@ -180,7 +180,8 @@ export function stringLights(kit: Kit, bodies: Bodies, glow: Glow | null, p: V3,
     const z = p.z + (q.z - p.z) * t;
     const y = p.y + (q.y - p.y) * t - sag * 4 * t * (1 - t) - 0.08;
     const c = BULB[Math.floor(hash3(x, z, i, 95) * BULB.length) % BULB.length];
-    bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.85 + 0.3 * hash3(x, z, i, 96));
+    // (dim, as the stage's: clamped to a small point they still bloomed into round orbs up close at full brightness)
+    bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.45 + 0.15 * hash3(x, z, i, 96));
     if (glow && haloEvery > 0 && i % haloEvery === 0) glow.add(x, y, z, c, 0.7, { level: 0.22 });
   }
 }

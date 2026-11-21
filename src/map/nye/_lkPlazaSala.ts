@@ -211,7 +211,7 @@ function sala(o: SalasIn, p: (typeof LAKE_SALAS)[number], i: number): { near: V3
     const half = along ? eaveX : eaveZ;
     for (let t = -half; t <= half + 0.01; t += step) {
       const W = S.world(along ? t : ex, eaveY - 0.08 - 0.06 * Math.cos((t / half) * Math.PI * 0.5), along ? ez : t);
-      bodies.add(W.x, W.y, W.z, 0.1, 0.12, 0.1, BULB[Math.floor(hash3(t, i, ex + ez, 643) * BULB.length) % BULB.length], 0.9);
+      bodies.add(W.x, W.y, W.z, 0.1, 0.12, 0.1, BULB[Math.floor(hash3(t, i, ex + ez, 643) * BULB.length) % BULB.length], 0.5);
     }
   }
   for (const sd of [-1, 1])
@@ -377,7 +377,7 @@ function stall(o: SalasIn, p: (typeof LAKE_STALLS)[number], i: number): void {
   }
   for (let x = -px; x <= px + 0.01; x += low ? 0.6 : 0.36) {
     const W = s.world(x, H - 0.32 - 0.05 * Math.cos((x / px) * Math.PI * 0.5), pzF + 0.62);
-    bodies.add(W.x, W.y, W.z, 0.09, 0.11, 0.09, BULB[Math.floor(hash3(x, i, 2, 661) * BULB.length) % BULB.length], 0.85);
+    bodies.add(W.x, W.y, W.z, 0.09, 0.11, 0.09, BULB[Math.floor(hash3(x, i, 2, 661) * BULB.length) % BULB.length], 0.5);
   }
   field.occupy(p.x - 2.4, p.z - 2.4, p.x + 2.4, p.z + 2.4);
   // The shop: before the counter's middle, facing the stall.
