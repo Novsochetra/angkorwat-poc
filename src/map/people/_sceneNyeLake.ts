@@ -2,7 +2,7 @@ import { Vector3 } from 'three';
 import { hash3 } from '../../voxel/random';
 import { graphicsNow } from '../graphics';
 import { nyeAsked, nyeOff, nyeSeconds, NYE_TIMES, squareShown } from '../nye/clock';
-import { LAKE_SHORE, LAKE_SHOW, LAKE_STAGE, onLakeShore } from '../nye/plan';
+import { LAKE_AVENUE, LAKE_GATE, LAKE_MANDALA, LAKE_PILLARS, LAKE_SALAS, LAKE_SHORE, LAKE_SHOW, LAKE_SIDE, LAKE_STAGE, LAKE_STALLS, LAKE_WALL, lakePlazaAt, lakePlazaPolar, onLakeShore } from '../nye/plan';
 import { SPARK_MAX, SPARKS, sparksOut } from '../nye/_lifeSparks';
 import type { MapFrame } from '../types';
 import { Actor } from './_actor';
@@ -103,6 +103,8 @@ const CANDLES = 8;
 
 /** The ordinary days' hours (`clock`): the evening's stroll, the mender by day. */
 const STROLL = (c: number) => c >= 0.08 && c < 0.3;
+/** The stalls' sellers' hours (as the Kulen square's). */
+const OPEN = (c: number) => c >= 0.8 || c < 0.4;
 const MENDING = (c: number) => c >= 0.76 || c < 0.12;
 
 const EX_AT: Point = { x: 0, y: 0, z: 0 };
@@ -110,15 +112,22 @@ const P = { x: 0, z: 0, yaw: 0 };
 const UV = { x: 0, z: 0 };
 const V = new Vector3();
 /**
- * The roam vong (`_nyeGroups.ts`) round the terrace's medallion (its middle: `LAKE_SHORE`'s), its times as the Kulen
- * square's (22:42 until 23:58:40), couples at most (on low: their families' only).
+ * The roam vong (`_nyeGroups.ts`) round the plaza's gold mandala (plan.ts `LAKE_MANDALA`: 2 m outside its gold rim, as
+ * at Kulen), its times as the Kulen square's (22:42 until 23:58:40), couples at most (on low: their families' only).
  */
-const VONG_RING = { x: LAKE_SHORE.x, z: LAKE_SHORE.z, r: 6.6 } as const;
+const VONG_RING = { x: LAKE_MANDALA.x, z: LAKE_MANDALA.z, r: LAKE_MANDALA.r + 2 } as const;
 const VONG_FROM = -4700;
 const VONG_TO = -80;
-const VONG_COUPLES = 7;
+const VONG_COUPLES = 12;
+/**
+ * The night's crowd on the plaza: at most `CROWD` (the plan's first `CROWD_LOW` people are its families on low: the
+ * rest stay home there), leaving room in the crowd for the other players' (`_scenePlayers.ts`: 50) and a margin.
+ */
+const CROWD = 122;
+const CROWD_LOW = 78;
+const PLAYERS_ROOM = 54;
 /** Children running between the groups, until a minute and a half before midnight. */
-const RUNNERS = 6;
+const RUNNERS = 8;
 const RUN_TO = -90;
 /** Everyone turns to the board from two minutes before midnight; midnight's hug (s). */
 const TURN_FROM = -120;
@@ -129,16 +138,40 @@ const HUG_FROM = 1.5;
 const HUG_TO = 8.5;
 /** Young couples sitting side by side on the ghat's top step, by the water (stage frame u of each), more sparklers. */
 const BY_WATER: readonly number[] = [4, 6, -6];
-const MORE_SPARKLERS = 7;
-/** The terrace's rules for a place to stand (as `_nyeLakePlan.ts`'s): the rim's margin, the open lane's half width, the ghat. */
+const MORE_SPARKLERS = 10;
+/**
+ * The plaza's rules for a place to stand (plan.ts's layout; nye/_lkPlaza*.ts builds it): within `RIM` m of the ring
+ * wall's line nobody stands (its fire pillars, the lamps), nor on the landing's open lane to the jetty (`LANE` m each
+ * side), in the ways in from the gate and the side opening (`AISLE` m each side), at a stall (its stand and counter, the
+ * buyers' spot before it: `STALL_BOX` in its frame, x across, z toward the plaza's middle) or a sala (its plinth and
+ * steps, `SALA_STEPS` m out from its front); the ghat (`GHAT` m each side of the jetty).
+ */
 const RIM = 2.2;
 const LANE = 2.3;
+const AISLE = 1.5;
 const GHAT = 8.5;
+const STALL_BOX = { x: 2.2, z0: -1.7, z1: 3.0 } as const;
+const SALA_STEPS = 1.8;
+/** The sellers behind the stalls' counters: on the stool (stall frame, nye/_lkPlazaSala.ts), facing the plaza. */
+const STOOL = { x: 0.65, z: -0.25 } as const;
+/** The way in for the night's families: up the east shore trail, onto the avenue near its end, down it, through the gate. */
+const TRAIL_IN: readonly [number, number][] = [
+  [-290, 62],
+  [-282, 46],
+  [-278, 26],
+  [-276, 0],
+  [-282, -28],
+  [-292, -60],
+  [-296.3, -76],
+];
+/** The fireworks (heads up during the show): the lake show's middle, half way up it (`LAKE_SHOW` heights over the water). */
+const SKY_MID = (LAKE_SHOW.low + LAKE_SHOW.high) / 2;
 const VG = { x: 0, z: 0, yaw: 0, turn: 0 };
 const T = { x: 0, z: 0 };
 const Q = { x: 0, z: 0 };
 const Q2 = { x: 0, z: 0 };
 const LOOK: Point = { x: 0, y: 0, z: 0 };
+const SKYP: Point = { x: 0, y: 0, z: 0 };
 const HAND = { x: 0, y: 0, z: 0 };
 const O = { x: 0, z: 0 };
 
@@ -170,6 +203,8 @@ export class NyeLakeLife implements PeopleScene {
   private readonly gz: Float32Array;
   private readonly sparklers: number[];
   private readonly byWater: number;
+  /** The sellers behind the stalls' counters (on their stools), and where. */
+  private readonly sellers: { a: Actor; x: number; z: number; yaw: number }[] = [];
   private readonly boats: BoatRun[] = [];
   private readonly dancers: Actor[] = [];
   private readonly players: Actor[] = [];
@@ -217,10 +252,16 @@ export class NyeLakeLife implements PeopleScene {
     // (the board's middle: in its gate at the deck's back, nye/_lkStage.ts)
     const bd = stagePt(0, BOARD_V, { x: 0, z: 0 });
     this.boardAt = { x: bd.x, y: this.deck + BOARD_Y, z: bd.z };
-    this.sky = { x: LAKE_SHOW.x, y: WATER + LAKE_SHOW.low - 5, z: LAKE_SHOW.z };
-    // The night's crowd (room left in the crowd, less the boats, the stage and the ordinary days' people: up to 78).
-    const room = crowd.capacity - crowd.count - 22;
-    this.plan = planLakeCrowd(this.site, Math.max(0, Math.min(78, room)));
+    this.sky = { x: LAKE_SHOW.x, y: WATER + SKY_MID, z: LAKE_SHOW.z };
+    // The night's crowd (room left in the crowd, less the boats, the stage, the sellers and the ordinary days' people,
+    // and the other players' room: up to `CROWD`); its families past the first `CROWD_LOW` people stay home on low.
+    const room = crowd.capacity - crowd.count - 22 - LAKE_STALLS.length - PLAYERS_ROOM;
+    this.plan = planLakeCrowd(this.site, Math.max(0, Math.min(CROWD, room)));
+    {
+      const ms = this.plan.members;
+      const lowGroups = new Set(ms.slice(0, CROWD_LOW).map((m) => m.group));
+      for (const m of ms) if (!lowGroups.has(m.group)) m.low = false;
+    }
     // Made alive (_nyeGroups.ts): couples sitting by the water, the families spread in small groups, the roam vong's
     // couples, the runners, more sparklers.
     {
@@ -228,47 +269,73 @@ export class NyeLakeLife implements PeopleScene {
       const site = this.site;
       this.byWater = this.sitByWater();
       const bankAt = (u: number) => site.bank[Math.max(0, Math.min(16, Math.round(u) + 8))];
-      const poles = [
-        stagePt(-(GHAT + 2.2), bankAt(-GHAT) + 1.6, { x: 0, z: 0 }),
-        stagePt(GHAT + 2.2, bankAt(GHAT) + 1.6, { x: 0, z: 0 }),
-        stagePt(-(GHAT + 8), bankAt(-GHAT) + 7, { x: 0, z: 0 }),
-        stagePt(GHAT + 8, bankAt(GHAT) + 7, { x: 0, z: 0 }),
-      ];
+      // (the lantern poles at the ghat's top corners: nye/_lkShore.ts puts each at the first of these that is dry)
+      const poles = [-1, 1].flatMap((sgn) => [2.2, 3.4, 4.6].map((du) => stagePt(sgn * (GHAT + du), bankAt(sgn * (GHAT + du)) + 1.4, { x: 0, z: 0 })));
       const { mats, stools } = this.plan;
+      const dry = (x: number, z: number) => {
+        const w = field.waterAt(x, z);
+        return !((w !== null && w > field.heightAt(x, z) - 0.05) || field.heightAt(x, z) < WATER + 1.2);
+      };
+      /** In a thing's frame (its middle, the way it faces): x across, z ahead. */
+      const local = (x: number, z: number, t: { x: number; z: number; facing: number }) => {
+        const dx = x - t.x;
+        const dz = z - t.z;
+        const c = Math.cos(t.facing);
+        const sn = Math.sin(t.facing);
+        O.x = dx * c - dz * sn;
+        O.z = dx * sn + dz * c;
+        return O;
+      };
+      /** Off the line from (phi, r0) on the rim in to the mandala: an aisle kept open. */
+      const inAisle = (phi: number, r: number, along: number, half: number) => {
+        if (r < VONG_RING.r) return false;
+        const d = Math.abs(Math.sin(phi - along)) * r;
+        return Math.cos(phi - along) > 0 && d < half;
+      };
+      /** Clear of everything built on the plaza and the landing (the stalls, the salas, the pillars, the poles, the mats). */
+      const clearOf = (x: number, z: number, pad: number) => {
+        for (const st of LAKE_STALLS) {
+          const o = local(x, z, st);
+          if (Math.abs(o.x) < STALL_BOX.x + pad && o.z > STALL_BOX.z0 - pad && o.z < STALL_BOX.z1 + pad) return false;
+        }
+        for (const sa of LAKE_SALAS) {
+          const o = local(x, z, sa);
+          if (Math.abs(o.x) < sa.w / 2 + 0.6 + pad && o.z > -sa.d / 2 - pad && o.z < sa.d / 2 + SALA_STEPS + pad) return false;
+        }
+        for (const p of LAKE_PILLARS) if (Math.hypot(p.x - x, p.z - z) < (p.big ? 2.0 : 1.6) + pad) return false;
+        for (const p of poles) if (Math.hypot(p.x - x, p.z - z) < 1.6 + pad) return false;
+        for (const m of mats) if (Math.hypot(m.x - x, m.z - z) < 2.2 + pad) return false;
+        for (const st of stools) if (Math.hypot(st.x - x, st.z - z) < 1.2 + pad) return false;
+        return true;
+      };
       const venue: Venue = {
         ok: (x, z) => {
-          const w = field.waterAt(x, z);
-          if ((w !== null && w > field.heightAt(x, z) - 0.05) || field.heightAt(x, z) < WATER + 1.2) return false;
-          if (!site.paved(x, z)) return false;
+          if (!dry(x, z) || !site.paved(x, z)) return false;
+          const [phi, r] = lakePlazaPolar(x, z);
           toStage(x, z, O);
-          // (on the terrace, its rim's lamps kept clear, or on the landing above the bank; out of the open lane)
-          if (!onLakeShore(x, z, -RIM) && !(Math.abs(O.x) <= GHAT - 0.5 && O.z >= bankAt(O.x) + 1)) return false;
-          if (O.z > STAGE_FRONT && Math.abs(O.x) < LANE) return false;
-          if (Math.hypot(x - VONG_RING.x, z - VONG_RING.z) < VONG_RING.r + 1.6) return false;
-          for (const p of poles) if (Math.hypot(p.x - x, p.z - z) < 2) return false;
-          for (const m of mats) if (Math.hypot(m.x - x, m.z - z) < 2.4) return false;
-          for (const st of stools) if (Math.hypot(st.x - x, st.z - z) < 1.3) return false;
-          return true;
+          // (on the plaza, the wall's line kept clear, or on the landing above the bank; out of the landing's open lane)
+          const onLanding = r > LAKE_WALL.r - RIM && Math.abs(O.x) <= GHAT - 0.5 && O.z >= bankAt(O.x) + 1;
+          if (r > LAKE_WALL.r - RIM && !onLanding) return false;
+          if (O.z > STAGE_FRONT && Math.abs(O.x) < LANE && Math.cos(phi) > 0.5) return false;
+          // (the mandala and the dance round it open; the ways in from the gate and the side opening to it)
+          if (r < VONG_RING.r + 1.6) return false;
+          if (inAisle(phi, r, LAKE_GATE.phi, AISLE) || inAisle(phi, r, LAKE_SIDE.phi, AISLE)) return false;
+          return clearOf(x, z, 0.2);
         },
-        box: [LAKE_SHORE.x - LAKE_SHORE.rx - 12, LAKE_SHORE.z - LAKE_SHORE.rz - 12, LAKE_SHORE.x + LAKE_SHORE.rx + 12, LAKE_SHORE.z + LAKE_SHORE.rz + 12],
+        box: [LAKE_SHORE.x - LAKE_WALL.r - 12, LAKE_SHORE.z - LAKE_WALL.r - 12, LAKE_SHORE.x + LAKE_WALL.r + 12, LAKE_SHORE.z + LAKE_WALL.r + 12],
         board: (x, z) => Math.atan2(LAKE_STAGE.x + Math.sin(LAKE_STAGE.yaw) * STAGE_FRONT - x, LAKE_STAGE.z + Math.cos(LAKE_STAGE.yaw) * STAGE_FRONT - z),
-        front: { ...stagePt(0, bankAt(0) + 3, { x: 0, z: 0 }), reach: 12 },
+        front: { ...stagePt(0, bankAt(0) + 3, { x: 0, z: 0 }), reach: 34 },
         ring: VONG_RING,
-        stalls: [],
-        stallOut: 4,
-        // (children run across the open lane too: anywhere paved and dry, clear of the poles and the mats)
-        open: (x, z) => {
-          const w = field.waterAt(x, z);
-          if ((w !== null && w > field.heightAt(x, z) - 0.05) || !site.paved(x, z) || !onLakeShore(x, z, -1.2)) return false;
-          for (const p of poles) if (Math.hypot(p.x - x, p.z - z) < 1.6) return false;
-          for (const m of mats) if (Math.hypot(m.x - x, m.z - z) < 2.2) return false;
-          return true;
-        },
+        // (a group before each stall, turned to it, and before each sala's steps)
+        stalls: [...LAKE_STALLS.map((st) => ({ ...st, out: STALL_BOX.z1 + 0.6 })), ...LAKE_SALAS.map((sa) => ({ ...sa, out: sa.d / 2 + SALA_STEPS + 0.8 }))],
+        stallOut: 3.6,
+        // (children run across the lane and the aisles too: anywhere on the plaza, clear of what is built)
+        open: (x, z) => dry(x, z) && onLakeShore(x, z, -1.6) && clearOf(x, z, 0),
         seed: 0x1a4e + 5,
       };
       this.groups = spreadGroups(ms, venue);
       ({ gx: this.gx, gz: this.gz } = gatherPlaces(ms, this.groups, venue, GATHER_PULL));
-      const couples = pickCouples(ms, VONG_COUPLES, () => true, 0x1a4e + 6);
+      const couples = pickCouples(ms, VONG_COUPLES, () => true, 0x1a4e + 6, (k) => ms[k].low);
       this.slotHigh = new Int16Array(ms.length).fill(-1);
       this.slotLow = new Int16Array(ms.length).fill(-1);
       this.partnerOf = new Int16Array(ms.length).fill(-1);
@@ -297,8 +364,18 @@ export class NyeLakeLife implements PeopleScene {
       this.sparklers = ms.map((m, k) => (m.sparkler ? k : -1)).filter((k) => k >= 0).slice(0, SPARK_MAX);
       this.inRing = new Uint8Array(ms.length);
       this.away = new Uint8Array(ms.length);
+      // Their way in: up the east shore trail, down the avenue, through the gate, round the dance to their place.
+      for (const m of ms) this.routeIn(m);
     }
     for (const m of this.plan.members) this.crowdActors.push(mk(m.look));
+    // The sellers behind the stalls' counters, on their stools (each stall's kind: nye/_lkPlazaSala.ts `KINDS`).
+    LAKE_STALLS.forEach((st, k) => {
+      const goods = (['fish', 'fruit', 'fruit', 'sweets'] as const)[k % 4];
+      const a = mk(dress('vendor', 9740 + k, { hat: k % 2 ? 'krama' : 'none', goods, sex: k === 0 ? 'm' : 'f' }));
+      const c = Math.cos(st.facing);
+      const sn = Math.sin(st.facing);
+      this.sellers.push({ a, x: st.x + STOOL.x * c + STOOL.z * sn, z: st.z - STOOL.x * sn + STOOL.z * c, yaw: st.facing });
+    });
     for (const b of this.plan.boats) {
       const crew = b.crew.map((c) => mk(c.look, false));
       this.boats.push({ b, rig: new Rig(things, familyBoatDef(b.lamp)), crew, lit: true });
@@ -372,7 +449,9 @@ export class NyeLakeLife implements PeopleScene {
     const c = f.clock - Math.floor(f.clock);
     const low = graphicsNow.level === 'low';
     this.rigs(night, s, low);
-    // The ordinary days.
+    // The sellers (also through the night) and the ordinary days.
+    const open = night ? s < LAKE_GONE + 120 : OPEN(c);
+    for (const sl of this.sellers) this.seller(sl, open, night, now, dt, ex);
     this.stroll(!night && STROLL(c), now, dt, ex);
     this.mend(!night && MENDING(c), now, dt, ex);
     // The night.
@@ -491,6 +570,55 @@ export class NyeLakeLife implements PeopleScene {
     a.tilt(hash3(w, a.i, 9, 2027) < 0.2 ? 0 : 0.55 + 0.08 * Math.sin(now * 2.3));
     this.glance(a, ex, now);
     a.step(dt, now);
+  }
+
+  /**
+   * A member's way in (into their `route`, `cum`, `trail`): from the floating village up the east shore trail, onto
+   * the avenue near its end, down it and through the land gate (`LAKE_GATE`, single file from there: `trail`), round
+   * the dance's ring when their place is across the plaza, to their place.
+   */
+  private routeIn(m: LakeMember): void {
+    const pts: number[] = [];
+    for (const [x, z] of TRAIL_IN) pts.push(x, z);
+    const ph = LAKE_AVENUE.phi;
+    for (const r of [LAKE_AVENUE.r1 - 1, (LAKE_AVENUE.r1 + LAKE_AVENUE.r0) / 2, LAKE_AVENUE.r0 + 0.4]) pts.push(...lakePlazaAt(ph, r));
+    const trail = pts.length / 2;
+    pts.push(...lakePlazaAt(ph, LAKE_WALL.r), ...lakePlazaAt(ph, LAKE_WALL.r - 2.4));
+    // (across the plaza: two points round the ring's outside, the shorter way)
+    const [pp, pr] = lakePlazaPolar(m.x, m.z);
+    let d = pp - ph;
+    d -= Math.PI * 2 * Math.round(d / (Math.PI * 2));
+    if (Math.abs(d) > 0.9) for (const k of [0.33, 0.67]) pts.push(...lakePlazaAt(ph + d * k, Math.max(VONG_RING.r + 4.5, Math.min(17, pr))));
+    pts.push(m.x, m.z);
+    const route = new Float32Array(pts);
+    const cum = new Float32Array(route.length / 2);
+    for (let k = 1; k < cum.length; k++) cum[k] = cum[k - 1] + Math.hypot(route[2 * k] - route[2 * k - 2], route[2 * k + 1] - route[2 * k - 1]);
+    m.route = route;
+    m.cum = cum;
+    m.trail = cum[trail - 1];
+  }
+
+  /** A seller on the stool behind a stall's counter: busy handing things over on the night, now and then by day. */
+  private seller(sl: { a: Actor; x: number; z: number; yaw: number }, open: boolean, night: boolean, now: number, dt: number, ex: Obstacle | null): void {
+    const a = sl.a;
+    if (!open) return void (a.shown && a.hide());
+    this.put(a, sl.x, sl.z, sl.yaw, 2);
+    a.goTo(sl.x, sl.z, 0.4);
+    a.face(sl.yaw);
+    const h = hash3(Math.floor((now + a.i * 3.1) / (night ? 5 : 9)), a.i, 13, 2027);
+    a.pose(h < (night ? 0.35 : 0.15) ? POSE.give : POSE.stool, now);
+    a.carry(0, now);
+    a.tilt(0);
+    this.glance(a, ex, now);
+    a.step(dt, now);
+  }
+
+  /** Where member `i` looks in the show: round the lake show's middle, half way up it, each a little apart (into `SKYP`). */
+  private skyOf(i: number): Point {
+    SKYP.x = LAKE_SHOW.x + (hash3(i, 1, 8, 2027) - 0.5) * LAKE_SHOW.spread * 0.8;
+    SKYP.y = WATER + SKY_MID + (hash3(i, 2, 8, 2027) - 0.5) * (LAKE_SHOW.high - LAKE_SHOW.low) * 0.45;
+    SKYP.z = LAKE_SHOW.z + (hash3(i, 3, 8, 2027) - 0.5) * LAKE_SHOW.depth * 0.6;
+    return SKYP;
   }
 
   /** Young couples (families of two grown-ups, partners) sitting side by side on the ghat's top step, facing the lake. */
@@ -756,7 +884,7 @@ export class NyeLakeLife implements PeopleScene {
       if (!seated) pose = s < -10 ? (m.phone && h < 0.4 ? POSE.photo : POSE.stand) : m.phone ? POSE.photo : s > -3 && h < 0.6 ? POSE.cheer : POSE.point;
       if (m.sparkler) hold = 1;
     } else if (s < 30) {
-      if (h < 0.45) look = this.sky;
+      if (h < 0.45) look = this.skyOf(a.i);
       const o = m.partner >= 0 ? this.plan.members[m.partner] : null;
       if (m.role === 'stool') pose = POSE.stool;
       else if (seated) pose = m.kid ? POSE.cheer : h < 0.5 ? POSE.wave : POSE.sit;
@@ -773,7 +901,7 @@ export class NyeLakeLife implements PeopleScene {
       } else pose = m.phone && h < 0.3 ? POSE.photo : h < 0.75 ? POSE.cheer : POSE.wave;
       if (m.sparkler) hold = 1;
     } else if (s < NYE_TIMES.show) {
-      look = this.sky;
+      look = this.skyOf(a.i);
       yaw = Math.atan2(this.sky.x - m.x, this.sky.z - m.z) * 0.5 + m.yaw * 0.5;
       if (!seated) pose = m.phone && h < 0.5 ? POSE.photo : h > 0.93 ? POSE.cheer : h > 0.88 ? POSE.point : POSE.look;
       if (m.sparkler) hold = 1;

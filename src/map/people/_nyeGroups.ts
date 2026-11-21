@@ -49,8 +49,8 @@ export interface Venue {
   front: { x: number; z: number; reach: number };
   /** The roam vong's ring (its middle, radius m). */
   ring: { x: number; z: number; r: number };
-  /** Stalls (their middle and the way they face): a group stands before a few of them, turned to them. */
-  stalls: readonly { x: number; z: number; facing: number }[];
+  /** Stalls, salas (their middle and the way they face; `out`: how far before it a group's middle stands, else `stallOut`): a group stands before a few of them, turned to them. */
+  stalls: readonly { x: number; z: number; facing: number; out?: number }[];
   /** How far before a stall's middle its group's middle stands (m). */
   stallOut: number;
   /** May a child run across (x, z) (default: `ok`)? */
@@ -193,9 +193,10 @@ export function spreadGroups(members: CrowdMember[], v: Venue, skip: (k: number)
     let done = false;
     if (stallGroups.has(o.i)) {
       const st = v.stalls[stallK++ % v.stalls.length];
+      const out0 = st.out ?? v.stallOut;
       for (let d = 0; d < 4 && !done; d += 0.5) {
-        const cx = st.x + Math.sin(st.facing) * (v.stallOut + r + d);
-        const cz = st.z + Math.cos(st.facing) * (v.stallOut + r + d);
+        const cx = st.x + Math.sin(st.facing) * (out0 + r + d);
+        const cz = st.z + Math.cos(st.facing) * (out0 + r + d);
         const open = yawTo(cx, cz, st.x, st.z);
         const pts = clear(cx, cz, r) ? arc(cx, cz, size, open) : null;
         if (pts) {
@@ -326,10 +327,11 @@ export function gatherPlaces(members: CrowdMember[], plan: GroupPlan, v: Venue, 
 export const VONG = { pace: 0.26, apart: 1.35, across: 0.4 } as const;
 
 /**
- * Couples for the dance: two grown-ups of one standing family who are partners (not carrying a child), the young
- * first; `max` couples, each [woman or first, man or second]. `ok` filters members (e.g. not the runners).
+ * Couples for the dance: two grown-ups of one standing family who are partners (not carrying a child), the `prefer`red
+ * first (the families shown on low), then the young; `max` couples, each [woman or first, man or second]. `ok` filters
+ * members (e.g. not the runners).
  */
-export function pickCouples(members: CrowdMember[], max: number, ok: (k: number) => boolean, seed: number): [number, number][] {
+export function pickCouples(members: CrowdMember[], max: number, ok: (k: number) => boolean, seed: number, prefer: (k: number) => boolean = () => false): [number, number][] {
   const rnd = mulberry32(seed);
   const pairs: { a: number; b: number; key: number }[] = [];
   members.forEach((m, k) => {
@@ -339,7 +341,7 @@ export function pickCouples(members: CrowdMember[], max: number, ok: (k: number)
     if (o.role !== 'stand' || o.kid) return;
     // (families of two — friends, a young couple — first, then any)
     const fam = members.filter((q) => q.group === m.group).length;
-    pairs.push({ a: k, b: p, key: rnd() + (fam <= 2 ? 1 : 0) });
+    pairs.push({ a: k, b: p, key: rnd() + (fam <= 2 ? 1 : 0) + (prefer(k) ? 2 : 0) });
   });
   pairs.sort((p, q) => q.key - p.key);
   return pairs.slice(0, max).map((p) => [p.a, p.b]);

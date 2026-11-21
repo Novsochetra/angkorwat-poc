@@ -78,10 +78,18 @@ const OFF_AT = 900;
 /** Walking on the stage (m/s). */
 const STAGE_WALK = 0.8;
 /**
- * Where heads turn in the fireworks: toward the show's middle, low (the `look` pose leans them back as well: their
- * heads tipped up to the bursts' height would show only their crowns).
+ * Where heads turn in the fireworks: toward the show's middle, half way up it (≈ 35° up from the square: the crowd's
+ * head tilt is clamped, `Crowd.look`, and the `look` pose leans them back as well), each a little apart (`skyOf`).
  */
-const SKY: Point = { x: SHOW_AREA.x, y: SHOW_AREA.low - 5, z: SHOW_AREA.z };
+const SKY: Point = { x: SHOW_AREA.x, y: (SHOW_AREA.low + SHOW_AREA.high) / 2, z: SHOW_AREA.z };
+const SKYP: Point = { x: 0, y: 0, z: 0 };
+/** Where member `i` looks in the show: round `SKY`, each a little apart (into `SKYP`). */
+function skyOf(i: number): Point {
+  SKYP.x = SKY.x + (hash3(i, 1, 8, 2027) - 0.5) * SHOW_AREA.spread * 0.8;
+  SKYP.y = SKY.y + (hash3(i, 2, 8, 2027) - 0.5) * (SHOW_AREA.high - SHOW_AREA.low) * 0.45;
+  SKYP.z = SKY.z + (hash3(i, 3, 8, 2027) - 0.5) * SHOW_AREA.depth * 0.6;
+  return SKYP;
+}
 const SKY_YAW_FROM = { x: SQUARE.x, z: SQUARE.z };
 /** The dancers (watched): their heads' height on the stage. */
 const STAGE_LOOK: Point = { x: STAGE.x, y: STAGE_TOP + 1.6, z: STAGE.front - 2.4 };
@@ -696,7 +704,7 @@ export class NyeLife implements PeopleScene {
     } else if (s < 30) {
       // Midnight: the cheer (heads up to the first bursts now and then), two of a family stepping together to hug, the
       // waving; the monks stay still.
-      if (h < 0.45) look = SKY;
+      if (h < 0.45) look = skyOf(i);
       const o = m.partner >= 0 ? this.plan.members[m.partner] : null;
       if (monk) pose = POSE.stand;
       else if (seated) pose = m.kid ? POSE.cheer : h < 0.5 ? POSE.wave : POSE.sit;
@@ -715,7 +723,7 @@ export class NyeLife implements PeopleScene {
       if (m.sparkler) hold = 1;
     } else if (s < NYE_TIMES.show) {
       // The fireworks: heads up over the stage, phones up, a cheer at a big one now and then.
-      look = SKY;
+      look = skyOf(i);
       yaw = Math.atan2(SKY.x - SKY_YAW_FROM.x, SKY.z - SKY_YAW_FROM.z) * 0.5 + m.yaw * 0.5;
       if (!seated && !monk) pose = m.phone && h < 0.5 ? POSE.photo : h > 0.93 ? POSE.cheer : h > 0.88 ? POSE.point : POSE.look;
       if (m.sparkler) hold = 1;
