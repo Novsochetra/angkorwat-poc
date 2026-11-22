@@ -2552,7 +2552,9 @@ l-ref `cam=-324,18,-88,-360,6,-36,55`; fireworks `fireworks=<s>&cam=384,11,-248,
 - **Round 5** (after the independent review's second pass): valley shells (`show.ts` `valleyShells`, own seeds: small to
   mid, 30‥58 m up over the Kulen pool, the picnic place and the plain east of the falls, 26‥44 m up over the water behind
   the lake stage; more as the show builds, a stream through the finale in purple, lotus, ice and jade; on low only near
-  their site), so the views from above have bursts in frame; the searchlights a V at all times; palm arms smooth strokes.
+  their site; `Rocket.valley`: a small soft glow and flash, never ice or white, 150‥215 m out over the lake), so the
+  views from above have bursts in frame; low bursts light the scene and tint the haze less (scaled by height, 0.25 low to
+  full at ≈ 100 m) and every glow is at most 1.2× its burst's height over its launch; the searchlights a V at all times; palm arms smooth strokes.
   The Kulen stream's and pool's candles and the bank lamps' reflections are water lights (`_lkReflect.ts` `WaterLights`);
   `kitFire` a low full fire (six orange tongues, three gold, a small white-hot heart at the foot; the kit's flame mode
   lights a leaping tongue by nothing at night, fades it from its foot to a red-orange tip and dissolves its sides and
