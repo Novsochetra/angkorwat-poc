@@ -2549,6 +2549,21 @@ l-ref `cam=-324,18,-88,-360,6,-36,55`; fireworks `fireworks=<s>&cam=384,11,-248,
   of its own meshes (built in `nye/index.ts` from them): its blocks and kit cloth in one voxel mesh, every venue's lights
   in one additive draw; the searchlights and the fireworks stay. `NyePiece.venue` / `detail` / `far()`. The overview at
   the finale: the event 5 draws (phone 517 of 520; low 534, the map alone 530).
+- **Round 5** (after the independent review's second pass): valley shells (`show.ts` `valleyShells`, own seeds: small to
+  mid, 30‥58 m up over the Kulen pool, the picnic place and the plain east of the falls, 26‥44 m up over the water behind
+  the lake stage; more as the show builds, a stream through the finale in purple, lotus, ice and jade; on low only near
+  their site), so the views from above have bursts in frame; the searchlights a V at all times; palm arms smooth strokes.
+  The Kulen stream's and pool's candles and the bank lamps' reflections are water lights (`_lkReflect.ts` `WaterLights`);
+  `kitFire` tongues narrow to points round a yellow-white heart; the frangipani (`_sqGarden.ts` champa) a tree with leaf
+  rosettes and flower clusters; the meadow's stepping stones pale and bedded. The festival krama (`FEAT.kramaWrap`: soft
+  cloth, a fine muted check, a knot and tail) on about one man in five; `PEOPLE_FIRE` has four entries (the two stages
+  negative: performers keep the stage lamps' light); the Kulen apsara in their own colours (`_sceneNye.ts` `apsaraLook`).
+  The mesa under the views over the lake plaza (`_lkMeadow.ts` `OVER_CAMS`: l-over, l-ref, `cam=-316,50,-123,-375,6,-20,50`)
+  is planted in fine blocks (`fineShrub`, 0.3 m), its 2 m land edges under a laterite kerb, kept from the vegetation
+  part's trees (`RESERVE`, west of x −299 so the hang-glider ramp at (−283, −108) keeps its spot); no meadow tree on a
+  cliff edge; only pale stones under the mandala. The lake gate's blocks have a 1.5 mm bevel (solid faces) and
+  `PlazaPools.wash` washes its shaded faces warm. The stair naga (`sacred/naga.ts`) is a curved fan hood with a lobe per
+  head and a rolled rim, seven cobras on their own necks, each with a snout and a small hood (`FanSpec.fan`).
 - **Night life** (`nye/_life.ts`, piece `life`; sparks via `_lifeSparks.ts`): fireflies, petals falling from the flowering
   trees' blossom blocks (found by colour), motes in the stage light, sparkler sparks; one point draw a venue, all in the
   shader; event night only, within 260 m, 55 % on medium, none on low.
