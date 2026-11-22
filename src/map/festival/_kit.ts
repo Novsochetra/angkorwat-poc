@@ -168,6 +168,9 @@ ${KIT_COMMON}
 
 // A flame's flicker (mode 7) for its glow; 1 for every other box.
 float kFlick = 1.0;
+// A leaping flame (mode 7, leap > 0): 1, and how high on its tongue this vertex is (0 its foot, 1 its tip); else 0.
+float kFire = 0.0;
+float kFireUp = 0.0;
 
 mat3 kRotY(float a) { float c = cos(a); float s = sin(a); return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c); }
 mat3 kRotX(float a) { float c = cos(a); float s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
@@ -215,11 +218,13 @@ vec3 kitPos(vec3 p, inout vec3 n) {
     q.y = (up * (1.0 + iAnim.y * (f - 0.5) * 2.0) - 0.5) * size.y;
     // (narrowing to a point as it leaps: a tongue of flame, not a block)
     q.xz *= 1.0 - (0.6 + 0.3 * f) * up * min(1.0, iAnim.y * 1.6);
-    // (the sway as big as the leap allows: a leap of 0 is a still lamp's glow, only flickering)
+    // (the sway as big as the leap allows: a leap of 0 is a still lamp's glow, only flickering; the tip licks quicker)
     float sw = min(1.0, iAnim.y * 2.0);
-    q.x += 0.12 * size.y * up * up * sin(w * 1.3 + 0.6) * sw;
-    q.z += 0.1 * size.y * up * up * sin(w * 0.9 + 2.1) * sw;
+    q.x += (0.14 * sin(w * 1.3 + 0.6) + 0.05 * sin(w * 3.7 + 0.3)) * size.y * up * up * sw;
+    q.z += (0.12 * sin(w * 0.9 + 2.1) + 0.05 * sin(w * 4.1 + 1.1)) * size.y * up * up * sw;
     kFlick = 0.7 + 0.6 * f;
+    kFire = step(0.01, iAnim.y);
+    kFireUp = up;
   }
   vec3 local = c + R * (q * sc);
   n = R * n;
@@ -261,7 +266,7 @@ export function kitUniforms(): KitUniforms {
 
 function inject(shader: WebGLProgramParametersWithUniforms, u: KitUniforms, colour: boolean): void {
   Object.assign(shader.uniforms, u);
-  shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${KIT_VERTEX}${colour ? 'uniform float uGlow;\nvarying vec3 vKitCol;\nvarying vec3 vKitGlow;\n' : ''}`);
+  shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${KIT_VERTEX}${colour ? 'uniform float uGlow;\nvarying vec3 vKitCol;\nvarying vec3 vKitGlow;\nvarying vec4 vKitFire;\n' : ''}`);
   if (colour)
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -269,8 +274,11 @@ function inject(shader: WebGLProgramParametersWithUniforms, u: KitUniforms, colo
         `vec3 kN = normal;
   vec3 kP = kitPos(position, kN);
   vec3 objectNormal = kN;
-  vKitCol = iCol * (0.84 + 0.16 * smoothstep(-1.0, 0.2, normal.y));
-  vKitGlow = iCol * iRot.z * uGlow * kFlick;`,
+  // (a leaping flame lit by nothing at night — the night's blue light on it read pink — glowing hotter at its foot, its
+  // tip dimmer and red-orange; its edges and tip dissolve in the fragment shader, vKitFire; every other box as it was)
+  vKitCol = iCol * (0.84 + 0.16 * smoothstep(-1.0, 0.2, normal.y)) * (1.0 - kFire * 0.9 * smoothstep(0.3, 0.7, uNight));
+  vKitGlow = iCol * iRot.z * uGlow * kFlick * mix(vec3(1.0), mix(vec3(1.0), vec3(0.85, 0.42, 0.12), kFireUp), kFire);
+  vKitFire = vec4(kFire, kFireUp, position.x, position.z);`,
       )
       .replace('#include <begin_vertex>', 'vec3 transformed = kP;');
   else shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', 'vec3 kN = normal;\n  vec3 transformed = kitPos(position, kN);');
@@ -319,7 +327,17 @@ export class Kit {
     material.onBeforeCompile = (shader) => {
       inject(shader, u, true);
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vKitCol;\nvarying vec3 vKitGlow;')
+        .replace('#include <common>', '#include <common>\nvarying vec3 vKitCol;\nvarying vec3 vKitGlow;\nvarying vec4 vKitFire;')
+        // (a leaping flame's sides and tip dissolve, pixel by pixel, into the air: soft, not a cut cone)
+        .replace(
+          '#include <clipping_planes_fragment>',
+          `#include <clipping_planes_fragment>
+  if (vKitFire.x > 0.5) {
+    float kAcross = min(abs(vKitFire.z), abs(vKitFire.w)) * 2.0;
+    float kKeep = (1.0 - smoothstep(0.55, 1.0, kAcross)) * (1.0 - smoothstep(0.62, 1.0, vKitFire.y));
+    if (kKeep < fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453)) discard;
+  }`,
+        )
         .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= vKitCol;')
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vKitGlow;');
     };

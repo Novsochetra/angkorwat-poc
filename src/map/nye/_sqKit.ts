@@ -204,32 +204,34 @@ export function hangingBanner(kit: Kit, x: number, top: number, z: number, face:
 }
 
 /** Flame colours (sRGB): the deep tongue, the heart, the yellow core; embers. */
-/** (orange, never a red so deep the night's blue light on it turns it pink) */
-const FIRE = { outer: 0xff8c1c, tongue: 0xffb03a, tip: 0xffda6c, core: 0xfff4cc, ember: 0xe8601e } as const;
+/** (orange to gold: the kit's flame mode turns each tongue's tip a dimmer red-orange, and at night lights it by nothing) */
+const FIRE = { outer: 0xffa82c, tongue: 0xffbc3c, gold: 0xffd458, heart: 0xfff2c8, ember: 0xd8701e } as const;
 
 /**
- * A live fire in a bowl whose rim is at (x, y, z), `s` its size (1: a bowl ≈ 0.7 m across): embers on the rim, a ring of
- * thin red-orange tongues round it, two orange ones and a tall gold one rising from the middle, and in the heart a small
- * yellow-white core, the hottest: every tongue leaps, narrows to a point and sways (the kit's `ANIM.flame`: each at its
- * own pace, never in step with the next bowl's), its glow flickering. Night: the core and the tall tongue bloom (a soft
- * glow round the fire, not a flat cone), the rest orange and red. In the festival kit: no draw of its own. The halo and
- * the pool of light round it are the caller's.
+ * A live fire in a bowl whose rim is at (x, y, z), `s` its size (1: a bowl ≈ 0.7 m across): embers on the rim, a full
+ * low fire — a ring of six broad orange tongues, three gold ones rising from the middle — and at its foot a small
+ * white-hot heart. Every tongue leaps, narrows and licks (the kit's `ANIM.flame`: each at its own pace, never in step
+ * with the next bowl's); it glows orange at its foot to gold, its tip a dimmer red-orange; its sides and tip dissolve
+ * into the air pixel by pixel (soft, not a cut cone); lit by nothing at night (never pink). Night: the heart and the gold
+ * tongues bloom a little. In the festival kit: no draw of its own. The halo and the pool of light round it are the
+ * caller's.
  */
 export function kitFire(kit: Kit, x: number, y: number, z: number, s: number, seed: number): void {
   const r = (k: number) => hash3(x, z, k, seed);
   const ph = r(1) * 6.28;
-  kit.box(x, y + 0.03 * s, z, 0.56 * s, 0.06 * s, 0.56 * s, FIRE.ember, { glow: 0.35 });
-  // (each tongue a tall box narrowing to a point as it leaps: `ANIM.flame`)
+  kit.box(x, y + 0.03 * s, z, 0.56 * s, 0.06 * s, 0.56 * s, FIRE.ember, { glow: 0.25 });
+  // (each tongue a box narrowing as it leaps: `ANIM.flame`)
   const tongue = (dx: number, dz: number, w: number, hh: number, color: number, glow: number, leap: number, k: number, speed: number) =>
     kit.box(x + dx * s, y + 0.04 * s + (hh * s) / 2, z + dz * s, w * s, hh * s, w * s, color, { yaw: r(k) * 1.5, glow, anim: ANIM.flame, a: [leap, ph + k * 1.9, perPeriod(speed)] });
-  // The ring of red-orange tongues round the rim.
-  for (let k = 0; k < 5; k++) {
-    const a = ph + (k / 5) * Math.PI * 2;
-    tongue(Math.cos(a) * 0.15, Math.sin(a) * 0.15, 0.14, 0.4 + 0.15 * r(10 + k), FIRE.outer, 0.4, 0.85, 10 + k, 6.4 + 1.3 * r(20 + k));
+  // The ring of broad orange tongues round the rim (a full fire, not a spike).
+  for (let k = 0; k < 6; k++) {
+    const a = ph + (k / 6) * Math.PI * 2;
+    tongue(Math.cos(a) * 0.15, Math.sin(a) * 0.15, 0.2, 0.3 + 0.12 * r(10 + k), FIRE.outer, 0.3, 0.7, 10 + k, 6.4 + 1.3 * r(20 + k));
   }
-  // Two orange tongues and the tall gold one from the middle; the yellow-white heart (glow at night: ≈ 1.5, 2.4, 3.8 ×).
-  tongue(0.06, -0.04, 0.17, 0.62, FIRE.tongue, 0.5, 0.8, 3, 7.1);
-  tongue(-0.06, 0.05, 0.16, 0.56, FIRE.tongue, 0.5, 0.8, 4, 6.7);
-  tongue(0.01, 0.0, 0.11, 0.88, FIRE.tip, 0.68, 0.9, 5, 8.2);
-  tongue(0, 0, 0.2, 0.32, FIRE.core, 1.1, 0.35, 2, 5.3);
+  // Three gold tongues from the middle (the tallest ≈ 0.6 of the bowl's width over it); the small white heart at the foot.
+  // (glow at night ≈ 1.05, 1.3, 1.4 × the colour: saturated orange and gold, never washed to a pale peach; the heart ≈ 2.8)
+  tongue(0.05, -0.03, 0.24, 0.48, FIRE.tongue, 0.37, 0.75, 3, 7.1);
+  tongue(-0.05, 0.05, 0.22, 0.42, FIRE.gold, 0.4, 0.75, 4, 6.7);
+  tongue(0.01, 0.0, 0.18, 0.58, FIRE.gold, 0.4, 0.8, 5, 8.2);
+  kit.box(x, y + 0.1 * s, z, 0.2 * s, 0.1 * s, 0.2 * s, FIRE.heart, { glow: 0.8, anim: ANIM.flame, a: [0, ph, perPeriod(5.3)] });
 }
