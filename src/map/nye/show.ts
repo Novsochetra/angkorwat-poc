@@ -2,6 +2,7 @@ import { mulberry32 } from '../../voxel/random';
 import { NYE_TIMES } from './clock';
 import { LAKES, PLATEAUS } from '../layout';
 import { LAKE_VIEW, VIEW } from './plan';
+import { ANGKOR_FOOT } from './_fwAngkor';
 
 /**
  * The New Year's Eve fireworks show (AWP-35) as a script: every rocket's launch time, place, colour, kind and
@@ -12,7 +13,7 @@ import { LAKE_VIEW, VIEW } from './plan';
  * The look is the owner's reference (assets/new-year-online/fireworks-reference.png): mostly temple gold, then
  * purple and lotus pink, a few ice blue-white accents, the flag's red and blue and jade now and then; peonies,
  * chrysanthemums, gold willows and palms, low crackles, comets, crossettes; rising trails; layered depths; the
- * signature (a golden lotus with Angkor Wat's three towers) right after midnight, twice in the show and to end it;
+ * signature (Angkor Wat as on the flag: its terrace, gallery and three towers) right after midnight, twice in the show and to end it;
  * a calm start, building up, a finale of layered waves.
  */
 
@@ -33,9 +34,9 @@ export type BurstKind =
   /** A bright coloured star climbing alone with a long glittering tail, a tiny pop at its top (fired in fans). */
   | 'comet'
   /**
-   * The signature: gold sparks that draw a lotus with the three lotus-bud towers of Angkor Wat rising from it (as on
+   * The signature: gold sparks that draw Angkor Wat as on the flag: the stepped terrace, the gallery and the three lotus-bud towers (as on
    * the flag: three towers, never five; nye/_fwAngkor.ts), flat, turned to the square (or `Rocket.face`), held crisp
-   * a second, then drooping and fading gold. Its towers the rocket's colour, its lotus the second.
+   * a second, then drooping and fading gold. Its silhouette and stairs the rocket's colour, its steps and pillars the second.
    */
   | 'angkor';
 
@@ -342,9 +343,9 @@ function signatureSpot(bearing: number, d: number, size: number): Spot {
   const b = bearing * DEG;
   const x = CAM[0] + Math.sin(b) * d;
   const z = CAM[2] - Math.cos(b) * d;
-  // (its lotus's foot 2° over the ridge from the square and 25 m over the slope under it; its picture 2.02 radii tall)
+  // (its foot 2° over the ridge from the square and 25 m over the slope under it; its picture ≈ 1.25 radii tall)
   const foot = Math.max(CAM[1] + Math.tan(ridgeBefore(b, d) + 2 * DEG) * d, hillAt(x, z) + 25);
-  return { x, z, size, y: foot + 1.02 * size };
+  return { x, z, size, y: foot + -ANGKOR_FOOT * size };
 }
 /** The signature over Kulen's west shoulder, where the overview (the picker's camera) and the rest of the map see it; it faces between the square and the overview. */
 const SIGNATURE_WEST = { x: 240, z: -395, face: [259, -295] as const };
@@ -394,7 +395,7 @@ function makeScript(): Rocket[] {
     if (!west) return m.fire(at, signatureSpot(43 + (rnd() - 0.5) * 2, 230, 54 * sizeK), 'angkor', 'gold', 'willow');
     const s = SIGNATURE_WEST;
     const size = 48 * sizeK;
-    const r = m.fire(at, { x: s.x, z: s.z, size, y: hillAt(s.x, s.z) + 25 + 1.02 * size }, 'angkor', 'gold', 'willow');
+    const r = m.fire(at, { x: s.x, z: s.z, size, y: hillAt(s.x, s.z) + 25 + -ANGKOR_FOOT * size }, 'angkor', 'gold', 'willow');
     r.face = s.face;
     return r;
   };
@@ -404,7 +405,7 @@ function makeScript(): Rocket[] {
 
   // ── Midnight (0‥8 s): a fan of five gold chrysanthemums as the year turns (a breath apart, not as one), two gold
   // willows hanging over the summit and an ice peony high between them; then the first big moment: the signature, a
-  // golden lotus and Angkor Wat's three towers over the east flank for the crowd, its twin over the west shoulder for
+  // golden Angkor Wat (as on the flag) over the east flank for the crowd, its twin over the west shoulder for
   // the rest of the map.
   for (let i = 0; i < 5; i++) shell(2.6 + [0, 0.12, 0.05, 0.17, 0.08][i], i % 2 ? 'mid' : 'high', 'chrysanthemum', 'gold', 30 + i * 6.5, 0.95 + 0.2 * rnd());
   shell(3.2, 'crown', 'willow', 'willow', -16);
@@ -697,14 +698,14 @@ function lakeShow(): Rocket[] {
       const size = 52 * sizeK;
       const d = 210;
       const [x, z] = fromShore(222 + (rnd() - 0.5) * 3, d);
-      // (its lotus's foot 10° up from the terrace: over the stage's board and the far barges)
+      // (its foot 10° up from the terrace: over the stage's board and the far barges)
       const foot = Math.max(LCAM[1] + Math.tan(10 * DEG) * d, WATER + 25);
-      const r = fire(at, { x, z, size, y: foot + 1.02 * size }, 'angkor', 'gold', 'willow');
+      const r = fire(at, { x, z, size, y: foot + -ANGKOR_FOOT * size }, 'angkor', 'gold', 'willow');
       r.face = [LCAM[0], LCAM[2]];
       return r;
     }
     const size = 44 * sizeK;
-    const r = fire(at, { x: -455, z: 2, size, y: WATER + 45 + 1.02 * size }, 'angkor', 'gold', 'willow');
+    const r = fire(at, { x: -455, z: 2, size, y: WATER + 45 + -ANGKOR_FOOT * size }, 'angkor', 'gold', 'willow');
     r.face = [-300, 40];
     return r;
   };

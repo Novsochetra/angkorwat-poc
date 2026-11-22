@@ -69,7 +69,7 @@ import { ANGKOR_POINTS, angkorShape } from './_fwAngkor';
  *  - the sparks: `PER[level]` instances a rocket (each its spark count at this level, the rest hidden), a ribbon
  *    streaked along its path for its trail (a willow's long and bending as it droops); a palm's few thick arms, a
  *    comet's glittering tail shed as it climbs, a crossette's stars popping into white-gold pieces, the signature's
- *    picture (a lotus and Angkor Wat's three towers, `_fwAngkor.ts`: its points in a small float texture, a stroke a
+ *    picture (Angkor Wat as on the flag: terrace, gallery, three towers, `_fwAngkor.ts`: its points in a small float texture, a stroke a
  *    spark, every spark of the rocket: fewer, longer strokes on low);
  *  - the halos, four a rocket: the shell climbing on its thin trail, the white flash of the burst, its glow in the
  *    air round it (the haze lit in its colour), its smoke drifting, lit by the bursts after it (not on low);

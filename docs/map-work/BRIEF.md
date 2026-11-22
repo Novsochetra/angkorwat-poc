@@ -2451,9 +2451,11 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   an hour (main.ts `LATER`). The script `nye/show.ts`: 797 rockets over 465 s, seeded, the same everywhere,
   placed by bearing and height from the crowd's view over Kulen's east flank right of the stage, and a crown
   over the summit for the overview and the rest of the map; acts: a five-shell opening and at 7.2 s the
-  **signature** (kind `angkor`: a golden lotus with Angkor Wat's three lotus-bud towers rising from it, as on the
-  flag, never five; `nye/_fwAngkor.ts` makes the picture once, 240 points along its outlines, a stroke a spark, every
-  spark of the rocket: 51 strokes on low; flat, turned to the square, held crisp 1.25 s, then drooping gold), its
+  **signature** (kind `angkor`: Angkor Wat as the flag of Cambodia draws it, measured on the flag (`FLAG`): the
+  stepped terrace, the gallery and its colonnade, three slender tiered lotus-bud spires on pointed porches, the middle
+  tallest, three towers never five, the stairs' lines under them; wider than tall (≈ 1.6 : 1, foot `ANGKOR_FOOT` −0.62
+  radii, show.ts places it by it); `nye/_fwAngkor.ts` makes the picture once, 240 points along its outlines (the spires
+  2.2× denser, `TOWER_DENSITY`, so their tiers read), a stroke a spark, every spark of the rocket: 51 strokes on low; flat, turned to the square, held crisp 1.25 s, then drooping gold), its
   twin over the west shoulder for the overview at 7.9 s (`Rocket.face`); the opening's mixed colours and the flag
   moment at 24 s (blue, red, blue peonies, a white one in the red); colours (pairs, rings, two-tone peonies); layers
   (signature west at 205 s); the build-up (signature east at 338 s); a lull; then the finale's layered waves (gold

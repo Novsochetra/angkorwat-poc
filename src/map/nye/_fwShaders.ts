@@ -350,7 +350,7 @@ export const FW_VERTEX = /* glsl */ `
       v = mix(mix(va, sparkV(vc, 3.2, 4.9, tb, tb), popped), -seg, held * step(1e-4, dot(seg, seg)));
       float u = clamp(tl / life, 0.0, 1.0);
       // Colour: its own, turning to the second, then gold-to-ember as it dies; the tail of a trail warmer. The
-      // signature: its towers the first colour, its lotus the second.
+      // signature: its silhouette and stairs the first colour, its steps' edges, pillars and porches the second.
       col = mix(mix(d2.rgb, d3.rgb, smoothstep(0.25, 0.6, u)), mix(d3.rgb, d2.rgb, P0.w), ke.z);
       // (white-hot as it leaves the burst, its colour coming as it cools; not the signature's gold, not crackles)
       col = mix(col, vec3(1.0, 0.93, 0.8), 0.35 * exp(-tl / 0.15) * (1.0 - ke.z) * (1.0 - kc.y));
