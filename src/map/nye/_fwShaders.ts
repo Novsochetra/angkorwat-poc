@@ -12,7 +12,7 @@
  *  1: launch point xyz, rise (s)
  *  2: colour (linear rgb), kind (`KIND_INDEX`)
  *  3: second colour (linear rgb), burst radius (m)
- *  4: seed (0‥1), sparks it has at this graphics level, flags (1 glitter + 2 crossette), its light's power (show.ts `burstLight`)
+ *  4: seed (0‥1), sparks it has at this graphics level, flags (1 glitter + 2 crossette + 4 valley shell), its light's power (show.ts `burstLight`)
  *  5: the point it faces (x, z: the signature's picture turns to it), -, -
  *
  * The signature's picture (`uShape`, RGBA float, `uShapeN` texels in a line): _fwAngkor.ts `angkorShape`.
@@ -126,15 +126,18 @@ export const FW_VERTEX = /* glsl */ `
     float x0 = max(xm * 0.4, 2.0);
     float x = mix(x0, D, position.y);
     // (as wide as a share of the burst seen from here: a wedge from the eye)
-    float aw = 0.25 * d3.w / max(length(b - c), 1.0) + 0.004;
+    // (never wider than 0.05 rad: a burst low and near the eye spread a haze over the water)
+    float aw = min(0.25 * d3.w / max(length(b - c), 1.0), 0.05) + 0.004;
     vec2 xz = c.xz + dir * x + sideV * (position.x * x * aw);
     vec4 mvPosition = viewMatrix * vec4(xz.x, level + 0.1, xz.y, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     float tau = uTime - d0.w;
     // (the water mirrors the burst's sparks as long as they glow, not only its flash: a slower curve than its light)
     float wl = KL[int(d2.w + 0.5)];
-    float lp = tau < 0.0 ? 0.0 : d4.w * (0.5 * exp(-tau / 0.09) + 0.5 * exp(-tau / 1.2) + wl * 0.45 * exp(-tau / 2.6));
-    vCol = mix(d2.rgb, vec3(1.0), 0.2) * lp * 3.0 * sb.z * (0.4 + 0.6 * uView.w);
+    // (its flash counts for little and its glints come in over half a second: a burst just opening low over the water
+    // was a glare on it, and in the bloom over the venue beside it)
+    float lp = tau < 0.0 ? 0.0 : d4.w * (0.2 * exp(-tau / 0.09) + 0.5 * exp(-tau / 1.2) + wl * 0.45 * exp(-tau / 2.6)) * smoothstep(0.0, 0.5, tau);
+    vCol = mix(d2.rgb, vec3(1.0), 0.1) * lp * 2.6 * sb.z * (0.4 + 0.6 * uView.w);
     vQ = vec2(position.x, position.y);
     vSoft = -1.0;
     vCore = 0.0;
@@ -249,6 +252,9 @@ export const FW_VERTEX = /* glsl */ `
     vec4 d3 = rk(slot, 3);
     vec4 d4 = rk(slot, 4);
     vec4 d5 = rk(slot, 5);
+    // (a valley shell: low and near a venue, its glow and flash small and soft, its stars a little dimmer)
+    float valley = floor(d4.z * 0.25 + 0.01);
+    float flagsLow = d4.z - 4.0 * valley;
     vec3 b = d0.xyz;
     float tau = uTime - d0.w;
     int kind = int(d2.w + 0.5);
@@ -275,8 +281,8 @@ export const FW_VERTEX = /* glsl */ `
       // tail, the signature's picture), its speed, then flight. Kinds by their tables' weights, never branches.
       float n = max(d4.y, 1.0);
       // (a crossette: a quarter of them are stars, each popping into four pieces late in its life: pj its star)
-      float cr = floor(d4.z * 0.5 + 0.01);
-      float glit = d4.z - 2.0 * cr;
+      float cr = floor(flagsLow * 0.5 + 0.01);
+      float glit = flagsLow - 2.0 * cr;
       float nP = max(floor(n / (1.0 + 3.0 * cr)), 1.0);
       float pj = fj - floor(fj / nP) * nP;
       float piece = floor(fj / nP);
@@ -354,7 +360,7 @@ export const FW_VERTEX = /* glsl */ `
       float bright = kb.y * pow(1.0 - smoothstep(KH[kind], 1.0, u), KD[kind]) * (1.0 + 0.3 * exp(-tl / 0.12));
       // (a burst opens: its stars at under half strength as they leave the heart, full by a third of a second; crackles,
       // comets and the signature their own)
-      bright *= mix(1.0, mix(0.4, 1.0, smoothstep(0.0, 0.35, tl)), (1.0 - kc.y) * (1.0 - ke.y) * (1.0 - ke.z));
+      bright *= mix(1.0, mix(0.4, 1.0, smoothstep(0.0, 0.35, tl)), (1.0 - kc.y) * (1.0 - ke.y) * (1.0 - ke.z)) * mix(1.0, 0.75, valley);
       // (flicker; glitter strobes as it fades)
       float fl = 1.0 - kc.z + kc.z * hash(floor(uTime * 24.0), fj + seed * 13.0);
       float strobe = step(0.45, fract(uTime * 11.0 + h1 * 13.0)) * 1.9;
@@ -400,10 +406,10 @@ export const FW_VERTEX = /* glsl */ `
       vec3 shell = mix(vec3(1.0, 0.7, 0.35), mix(d2.rgb, vec3(1.0), 0.3), kf.z) * 1.4 * kf.w * fl * mix(0.05, 1.0, pow(s, 2.0)) * (0.6 + 0.4 * smoothstep(0.0, 0.3, tl))
         * mix(smoothstep(0.0, 0.45, -tau), 1.0, ke.y);
       // (the burst's flash: small and quick, a bright point, not a ball that the bloom spreads over the sky)
-      vec3 flash = mix(d2.rgb, vec3(1.0), 0.65) * 1.1 * sqrt(uCrowd) * exp(-max(tau, 0.0) / 0.05);
+      vec3 flash = mix(d2.rgb, vec3(1.0), 0.65) * 1.1 * mix(1.0, 0.35, valley) * sqrt(uCrowd) * exp(-max(tau, 0.0) / 0.05);
       // (the glow lasts as its sparks do: a soft halo of its colour behind them, white at its heart at first)
       float gl = tau < 0.0 ? 0.0 : 0.55 * exp(-tau / 0.12) + 0.45 * exp(-tau / 1.3) + KL[kind] * 0.35 * exp(-tau / 2.6);
-      vec3 glow = mix(d2.rgb, vec3(1.0), 0.25 * exp(-max(tau, 0.0) / 0.25)) * 0.045 * gl * uCrowd;
+      vec3 glow = mix(d2.rgb, vec3(1.0), 0.25 * exp(-max(tau, 0.0) / 0.25)) * 0.045 * mix(1.0, 0.5, valley) * gl * uCrowd;
       // smoke: its own faint grey under the moon, and the light of the bursts now near it
       vec3 lit = vec3(0.004, 0.005, 0.008) * uView.w;
       for (int i = 0; i < 2; i++) {
@@ -412,7 +418,10 @@ export const FW_VERTEX = /* glsl */ `
       }
       vec3 smoke = lit * uCrowd * smoothstep(0.2, 1.4, tau) * (1.0 - smoothstep(5.0, 9.0, tau));
       col = oh.x * shell + oh.y * flash + oh.z * glow + oh.w * smoke;
-      width = dot(oh, vec4(kf.x, size * 0.2 * (1.0 + 2.0 * max(tau, 0.0)), size * 2.0, size * (0.75 + 0.08 * tau)));
+      // (the glow never wider than the burst stands high over its launch, a valley shell's about its own size: a low
+      // burst's haze stays round it, never over the venue beside it)
+      float glowW = min(size * mix(2.0, 1.1, valley), max(6.0, 1.2 * (b.y - d1.y)));
+      width = dot(oh, vec4(kf.x, size * mix(0.2, 0.12, valley) * (1.0 + 2.0 * max(tau, 0.0)), glowW, size * (0.75 + 0.08 * tau)));
       minPx = dot(oh, vec4(1.6, 3.0, 4.0, 4.0));
       vSoft = dot(oh, vec4(3.0, 3.5, 2.6, 2.2));
       vCore = dot(oh, vec4(0.8, 0.8, 0.0, 0.0));
