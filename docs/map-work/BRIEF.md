@@ -2555,8 +2555,9 @@ l-ref `cam=-324,18,-88,-360,6,-36,55`; fireworks `fireworks=<s>&cam=384,11,-248,
   their site), so the views from above have bursts in frame; the searchlights a V at all times; palm arms smooth strokes.
   The Kulen stream's and pool's candles and the bank lamps' reflections are water lights (`_lkReflect.ts` `WaterLights`);
   `kitFire` tongues narrow to points round a yellow-white heart; the frangipani (`_sqGarden.ts` champa) a tree with leaf
-  rosettes and flower clusters; the meadow's stepping stones pale and bedded. The festival krama (`FEAT.kramaWrap`: soft
-  cloth, a fine muted check, a knot and tail) on about one man in five; `PEOPLE_FIRE` has four entries (the two stages
+  rosettes and flower clusters; the meadow's stepping stones pale and bedded. The festival krama (`FEAT.kramaWrap`: a
+  twisted cloth roll wound twice round the short hair, the hair showing in the middle from above, a fine muted check as
+  thin lines round the turns, a knot and tail at the side) on about one man in five; `PEOPLE_FIRE` has four entries (the two stages
   negative: performers keep the stage lamps' light); the Kulen apsara in their own colours (`_sceneNye.ts` `apsaraLook`).
   The mesa under the views over the lake plaza (`_lkMeadow.ts` `OVER_CAMS`: l-over, l-ref, `cam=-316,50,-123,-375,6,-20,50`)
   is planted in fine blocks (`fineShrub`, 0.3 m), its 2 m land edges under a laterite kerb, kept from the vegetation
