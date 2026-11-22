@@ -16,12 +16,14 @@ import { cone, mirrorX, rot, smin, subtract, union, type Rot, type Shape } from 
  * - `nagaFan(kind, look)`: the naga rearing up. Its body comes in low from
  *   behind (−z) and rises into a smooth hood; round the hood's rim the heads
  *   (the middle one highest), each a broad cobra head looking ahead (+z)
- *   and a little down. `stair`: seven heads before one smooth fan, a thin
- *   plate with a rolled rim behind them (Angkor Wat's nagas' halo made
- *   smooth: its flame leaves read as a toothed cog from the front, AWP-35),
- *   `FAN_HEIGHT.stair` m tall at 1:1; `roof`: five heads, no halo,
- *   for the lower ends of a roof's barge boards (scale it down). On y = 0,
- *   facing +z.
+ *   and a little down. `stair`: seven cobras fanned up and out on their
+ *   own necks, each head with its snout and a small hood of its own,
+ *   before one thick curved fan hood — cupped forward, a lobe behind each
+ *   head, a raised rolled rim round its smooth edge (Angkor Wat's nagas'
+ *   flame-leaf halo made smooth: it read as a toothed cog, then a flat
+ *   plate as a hand mirror; AWP-35) — `FAN_HEIGHT.stair` m tall at 1:1;
+ *   `roof`: five heads on a thin hood plate, for the lower ends of a
+ *   roof's barge boards (scale it down). On y = 0, facing +z.
  * - `nagaBody(path, r, tail, look)`: its smooth round body along a path (a
  *   stair's balustrade, the top of a barge board), paler scales along its
  *   belly, tapering along its last `tail` m.
@@ -99,6 +101,8 @@ function cobraHead(): Shape {
   const parts: Shape[] = [
     ell(0, 0.012, -0.03, 0.125, 0.068, 0.12),
     ell(0, -0.006, 0.07, 0.088, 0.05, 0.085),
+    // (the snout standing out in front, narrower: a cobra's, not a round ball)
+    ell(0, -0.016, 0.13, 0.058, 0.036, 0.058),
     ell(0, -0.044, 0.035, 0.08, 0.03, 0.088),
     mirrorX(ell(0.056, 0.05, 0.022, 0.042, 0.022, 0.052)),
     mirrorX(ell(0.086, 0.03, 0.042, 0.026, 0.026, 0.026)),
@@ -129,24 +133,36 @@ function inHead(sh: Shape, h: HeadAt, x: number, y: number, z: number): number {
   return sh.d(R[0] * px + R[3] * py + R[6] * pz, R[1] * px + R[4] * py + R[7] * pz, R[2] * px + R[5] * py + R[8] * pz) * h.s;
 }
 
-/** The measures of a fan (m, at 1:1): hood centre height, the heads' arc radius and spread (to the outermost, from upright), the hood plate's radius, the halo. */
+/** The measures of a fan (m, at 1:1): hood centre height, the heads' arc radius and spread (to the outermost, from upright), the hood plate's radius (the roof's). */
 interface FanSpec {
   heads: number;
   hc: number;
   rh: number;
   spread: number;
   rp: number;
-  /** The halo's radius round the hood's centre (0: none): the smooth fan behind the heads reaches a little past it. */
-  halo: number;
   /** How far back the body comes in (m behind the hood). */
   tail: number;
+  /**
+   * A stair's fan hood (`fanHood`; else the roof's plate, `hoodPlate`): its lobe round each head (m), how far its sides
+   * and top come forward (m per m², a dish), its half thickness, its rim's radius, and the core's radius round the hood's
+   * centre and at its foot, `foot` m below it.
+   */
+  fan?: { lobe: number; cup: number; t: number; rim: number; core: number; neck: number; foot: number };
 }
 
 /** `stairFar`, `stairCoarse` and `roofFar` are the fans meshed coarser (their looks further off). */
 export type FanKind = 'stair' | 'stairFar' | 'stairCoarse' | 'roof' | 'roofFar';
 
-const STAIR: FanSpec = { heads: 7, hc: 1.34, rh: 0.56, spread: 80 * DEG, rp: 0.5, halo: 0.8, tail: 0.75 };
-const ROOF: FanSpec = { heads: 5, hc: 1.3, rh: 0.46, spread: 64 * DEG, rp: 0.42, halo: 0, tail: 0.5 };
+const STAIR: FanSpec = {
+  heads: 7,
+  hc: 1.34,
+  rh: 0.74,
+  spread: 80 * DEG,
+  rp: 0.5,
+  tail: 0.75,
+  fan: { lobe: 0.18, cup: 0.3, t: 0.06, rim: 0.055, core: 0.66, neck: 0.18, foot: 0.74 },
+};
+const ROOF: FanSpec = { heads: 5, hc: 1.3, rh: 0.46, spread: 64 * DEG, rp: 0.42, tail: 0.5 };
 const FANS: Record<FanKind, FanSpec> = { stair: STAIR, stairFar: STAIR, stairCoarse: STAIR, roof: ROOF, roofFar: ROOF };
 
 /** The heads of a fan: round the hood's rim, the middle one highest and largest, turned out a little, looking a little down. */
@@ -156,16 +172,88 @@ function headsOf(f: FanSpec): HeadAt[] {
   for (let j = 0; j < n; j++) {
     const a = n > 1 ? -f.spread + (2 * f.spread * j) / (n - 1) : 0;
     const mid = 1 - Math.abs(a) / f.spread;
-    out.push({
-      x: Math.sin(a) * f.rh,
-      y: f.hc + Math.cos(a) * f.rh + 0.05 * mid,
-      // (the side heads come forward a little: the hood is cupped)
-      z: 0.14 + 0.1 * Math.sin(a) * Math.sin(a),
-      R: rot(a * 0.3, 12 * DEG, -a * 0.55),
-      s: 1.1 + 0.14 * mid,
-    });
+    const x = Math.sin(a) * f.rh;
+    const y = f.hc + Math.cos(a) * f.rh + 0.05 * mid;
+    out.push(
+      f.fan
+        ? // (each well in front of the dish, on its own neck, apart from the next: seven cobras, not a ring of knobs)
+          { x, y, z: fanZ(f, x, y) + f.fan.t + 0.16, R: rot(a * 0.3, 14 * DEG, -a * 0.6), s: 1.12 + 0.16 * mid }
+        : // (the side heads come forward a little: the hood is cupped)
+          { x, y, z: 0.14 + 0.1 * Math.sin(a) * Math.sin(a), R: rot(a * 0.3, 12 * DEG, -a * 0.55), s: 1.1 + 0.14 * mid },
+    );
   }
   return out;
+}
+
+/** The fan hood's middle surface (fan space): a dish, its sides and top coming forward (a cobra's hood is cupped). */
+function fanZ(f: FanSpec, x: number, y: number): number {
+  const up = y > f.hc ? y - f.hc : 0;
+  return -0.06 + (f.fan?.cup ?? 0) * (x * x + 0.6 * up * up);
+}
+
+/** Its slope's length factor there (for a distance across the curved plate). */
+function fanSlope(f: FanSpec, x: number, y: number): number {
+  const c = f.fan?.cup ?? 0;
+  const up = y > f.hc ? y - f.hc : 0;
+  const gx = 2 * c * x;
+  const gy = 1.2 * c * up;
+  return Math.sqrt(1 + gx * gx + gy * gy);
+}
+
+/**
+ * The fan hood's outline in its plane (signed distance, m): a cobra's spread hood — round over the top, narrowing
+ * smoothly down into the neck — with a round lobe behind each head, blended (smooth scallops, never teeth).
+ */
+function fanOutline(f: FanSpec, heads: readonly HeadAt[], x: number, y: number): number {
+  const F = f.fan!;
+  // (the core: two circles, the hood's centre's and the neck's, joined by their tangents)
+  const r1 = F.neck;
+  const r2 = F.core;
+  const h = F.foot;
+  const px = x < 0 ? -x : x;
+  const py = y - (f.hc - h);
+  const b = (r1 - r2) / h;
+  const a = Math.sqrt(1 - b * b);
+  const k = -b * px + a * py;
+  const core = k < 0 ? Math.sqrt(px * px + py * py) - r1 : k > a * h ? Math.sqrt(px * px + (py - h) * (py - h)) - r2 : a * px + b * py - r1;
+  let lobes = Infinity;
+  for (const hd of heads) {
+    const dx = x - hd.x;
+    const dy = y - hd.y;
+    const d = Math.sqrt(dx * dx + dy * dy) - F.lobe * (0.9 + 0.1 * hd.s);
+    if (d < lobes) lobes = d;
+  }
+  return smin(core, lobes, 0.1);
+}
+
+/**
+ * The stair naga's fan hood (the art review, AWP-35: the flat plate behind a ring of heads read as a paddle, a hand
+ * mirror): a thick curved fan, cupped forward like a cobra's spread hood, a lobe behind each head, a raised rolled rim
+ * all round its front edge, narrowing down into the neck.
+ */
+function fanHood(f: FanSpec, heads: readonly HeadAt[]): Shape {
+  const F = f.fan!;
+  const X = F.core + 0.05 + Math.max(...heads.map((h) => Math.abs(h.x) + F.lobe));
+  const y0 = f.hc - F.foot - F.neck - 0.05;
+  const y1 = Math.max(...heads.map((h) => h.y)) + F.lobe + 0.06;
+  const zMax = fanZ(f, X, y1) + F.t + F.rim + 0.04;
+  return {
+    box: [-X, y0, -0.06 - F.t - 0.04, X, y1, zMax],
+    d(x, y, z) {
+      const d2 = fanOutline(f, heads, x, y);
+      const zs = fanZ(f, x, y);
+      const sl = fanSlope(f, x, y);
+      const dz = (Math.abs(z - zs) - F.t) / sl;
+      const ox = d2 > 0 ? d2 : 0;
+      const oz = dz > 0 ? dz : 0;
+      const plate = Math.min(Math.max(d2, dz), 0) + Math.sqrt(ox * ox + oz * oz) - 0.008;
+      // The rim: a rolled tube along the front edge, standing proud of the face.
+      const er = d2 + F.rim * 0.95;
+      const ez = (z - (zs + F.t * 0.55)) / sl;
+      const tube = Math.sqrt(er * er + ez * ez) - F.rim;
+      return smin(plate, tube, 0.03);
+    },
+  };
 }
 
 /**
@@ -206,7 +294,8 @@ function headFan(f: FanSpec, heads: HeadAt[]): Shape {
   const head = cobraHead();
   const n = heads.length;
   const step = n > 1 ? (2 * f.spread) / (n - 1) : 1;
-  const cy = f.hc - 0.2;
+  const cy = f.hc - (f.fan ? 0.3 : 0.2);
+  const cz = f.fan ? fanZ(f, 0, cy) + f.fan.t * 0.5 : 0;
   // Each rib: from the hood's lower middle out to the back of the head's neck (fan space).
   const ribs = heads.map((h) => {
     const R = h.R;
@@ -216,8 +305,29 @@ function headFan(f: FanSpec, heads: HeadAt[]): Shape {
     const bx = h.x + R[1] * ly + R[2] * lz;
     const by = h.y + R[4] * ly + R[5] * lz;
     const bz = h.z + R[7] * ly + R[8] * lz;
-    return cone([0, cy, 0.0], [bx, by, bz], 0.04, 0.06);
+    return f.fan ? cone([0, cy, cz], [bx, by, bz], 0.045, 0.065) : cone([0, cy, 0.0], [bx, by, bz], 0.04, 0.06);
   });
+  // Each head's own small hood (the stair's fan): a flat oval flaring round its neck just behind and below the head,
+  // standing off the big fan's face.
+  const hoods = f.fan
+    ? heads.map((h) => {
+        const a = Math.atan2(h.x, h.y - f.hc);
+        const ux = Math.sin(a);
+        const uy = Math.cos(a);
+        return { x: h.x - ux * 0.15 * h.s, y: h.y - uy * 0.15 * h.s, z: h.z - 0.075, ux, uy, rt: 0.155 * h.s, ru: 0.14 * h.s, rn: 0.04 };
+      })
+    : null;
+  const hoodAt = (j: number, x: number, y: number, z: number): number => {
+    const o = hoods![j];
+    const dx = x - o.x;
+    const dy = y - o.y;
+    const u = (dx * o.ux + dy * o.uy) / o.ru;
+    const t = (dx * o.uy - dy * o.ux) / o.rt;
+    const n = (z - o.z) / o.rn;
+    const k0 = Math.sqrt(u * u + t * t + n * n);
+    const k1 = Math.sqrt((u * u) / (o.ru * o.ru) + (t * t) / (o.rt * o.rt) + (n * n) / (o.rn * o.rn));
+    return k1 > 1e-9 ? (k0 * (k0 - 1)) / k1 : -o.rn;
+  };
   const reach = 0.25;
   const one = (j: number, x: number, y: number, z: number) => {
     const h = heads[j];
@@ -226,7 +336,8 @@ function headFan(f: FanSpec, heads: HeadAt[]): Shape {
     const dz = z - h.z;
     const ball = Math.sqrt(dx * dx + dy * dy + dz * dz) - reach * h.s;
     const hd = ball > 0.05 ? ball : inHead(head, h, x, y, z);
-    return smin(hd, ribs[j].d(x, y, z), 0.05);
+    const d = smin(hd, ribs[j].d(x, y, z), 0.05);
+    return hoods ? smin(d, hoodAt(j, x, y, z), 0.04) : d;
   };
   let x0 = Infinity;
   let x1 = -Infinity;
@@ -239,7 +350,7 @@ function headFan(f: FanSpec, heads: HeadAt[]): Shape {
     z1 = Math.max(z1, h.z + reach);
   }
   return {
-    box: [x0, cy - 0.1, -0.12, x1, y1, z1],
+    box: [x0, cy - 0.1, f.fan ? cz - 0.12 : -0.12, x1, y1, z1],
     d(x, y, z) {
       const a = Math.atan2(x, y - f.hc);
       const fj = (a + f.spread) / step;
@@ -247,38 +358,6 @@ function headFan(f: FanSpec, heads: HeadAt[]): Shape {
       const j2 = clamp(fj > j ? j + 1 : j - 1, 0, n - 1);
       const d = one(j, x, y, z);
       return j2 === j ? d : Math.min(d, one(j2, x, y, z));
-    },
-  };
-}
-
-/**
- * The halo: ONE smooth fan behind the heads (the owner's rule: a cobra with a smooth fan hood; a band with flame leaves
- * round it read as a toothed cog from the front): a thin plate round over the top (radius `f.halo` and a little more
- * round the hood's centre), cut level low on its sides behind the hood, a rolled rim along its edge.
- */
-function halo(f: FanSpec): Shape {
-  const R = f.halo + 0.12;
-  const cy = f.hc;
-  const zc = -0.05;
-  const t = 0.035;
-  const rim = 0.045;
-  // (its level foot, behind the hood's plate and the lowest heads)
-  const foot = cy - 0.36;
-  return {
-    box: [-R - 0.1, foot - 0.1, zc - t - rim - 0.03, R + 0.1, cy + R + 0.1, zc + t + rim + 0.03],
-    d(x, y, z) {
-      const dy = y - cy;
-      const r = Math.sqrt(x * x + dy * dy);
-      const d2 = Math.max(r - R, foot - y);
-      const dz = Math.abs(z - zc) - t;
-      const ox = d2 > 0 ? d2 : 0;
-      const oz = dz > 0 ? dz : 0;
-      const plate = Math.min(Math.max(d2, dz), 0) + Math.sqrt(ox * ox + oz * oz);
-      // The rolled rim: a tube along the plate's round edge.
-      const er = r - (R - rim * 0.6);
-      const ez = z - zc;
-      const tube = Math.max(Math.sqrt(er * er + ez * ez) - rim, foot - y);
-      return smin(plate, tube, 0.02);
     },
   };
 }
@@ -294,17 +373,18 @@ export function fanSculpt(kind: FanKind): Sculpt {
     [
       cone([0, 0.2, tz], [0, 0.22, -0.24], 0.16, 0.17),
       cone([0, 0.22, -0.24], [0, 0.62, -0.02], 0.17, 0.16),
-      cone([0, 0.62, -0.02], [0, f.hc - 0.34, -0.04], 0.16, 0.12),
+      cone([0, 0.62, -0.02], [0, f.hc - 0.34, -0.04], 0.16, f.fan ? 0.15 : 0.12),
     ],
     0.08,
   );
   s.add(body, 'naga', 0);
-  s.add(hoodPlate(f), 'naga', 0.07);
-  s.add(headFan(f, heads), 'naga', 0.03);
-  if (f.halo > 0) {
-    s.add(halo(f), 'halo', 0.02);
-    // (the halo stands on the hood: two struts behind it, low on each side)
-    for (const side of [-1, 1]) s.add(cone([side * 0.22, f.hc - 0.42, -0.05], [side * f.halo * Math.sin(114 * DEG), f.hc + f.halo * Math.cos(114 * DEG), -0.05], 0.05, 0.045), 'halo', 0.05);
+  if (f.fan) {
+    // (the stair's: one thick curved fan hood, seven cobras on their necks before it)
+    s.add(fanHood(f, heads), 'halo', 0.06);
+    s.add(headFan(f, heads), 'naga', 0.035);
+  } else {
+    s.add(hoodPlate(f), 'naga', 0.07);
+    s.add(headFan(f, heads), 'naga', 0.03);
   }
   // Their eyes, painted dark.
   const eye = EYES;
@@ -342,7 +422,7 @@ const fanMeshes = new Map<FanKind, SculptMesh>();
 const fanGeometries = new Map<string, BufferGeometry>();
 
 /** A fan's height at 1:1 (m, from its foot to the top of its halo or its highest head). */
-export const FAN_HEIGHT: Record<FanKind, number> = { stair: 2.31, stairFar: 2.31, stairCoarse: 2.31, roof: 2.0, roofFar: 2.0 };
+export const FAN_HEIGHT: Record<FanKind, number> = { stair: 2.32, stairFar: 2.32, stairCoarse: 2.32, roof: 2.0, roofFar: 2.0 };
 
 /** The naga fan of a kind and look (see the file's note): on y = 0, facing +z, at 1:1 (`FAN_HEIGHT`); made once and shared (do not dispose). */
 export function nagaFan(kind: FanKind, look: NagaLook = 'gilt'): BufferGeometry {

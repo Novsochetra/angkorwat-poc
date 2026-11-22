@@ -1,4 +1,4 @@
-import { AdditiveBlending, BufferGeometry, Color, Float32BufferAttribute, Mesh, ShaderMaterial, Sphere, Vector3, type Texture } from 'three';
+import { AdditiveBlending, BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Mesh, ShaderMaterial, Sphere, Vector3, type Texture } from 'three';
 import type { HeightField } from '../heightfield';
 import { hazeUniforms } from '../sky/haze';
 
@@ -10,6 +10,8 @@ import { hazeUniforms } from '../sky/haze';
  *   floor's height (a sala's), round each fire pillar, lamp post, stall, sala, brazier and the gate — full on paving,
  *   a fifth as bright on grass (the light is added, not lit: on dark grass it would read as an orange wash), fading
  *   out where the land steps; dark gaps left between them;
+ * - **washes**: the same soft light standing on the gate's shaded faces (its plaza side, its ends, the tower's back and
+ *   sides), as firelight bounced off the floor and the braziers, brightest low;
  * - **the mandala**: one quad lying on the pavers with the Kulen ring's painted lotus (`_sqRing.ts` `buildNyeRing`'s
  *   texture: thin gold lines), breathing, a slow light running round it on the event night.
  *
@@ -48,6 +50,37 @@ export class PlazaPools {
   add(x: number, z: number, r: number, color: number, level: number, y: number | null = null): void {
     const grid = y === null ? Math.max(3, Math.min(8, Math.round(r / 1.2))) : 1;
     this.quad(x, z, r, color, level, 0, grid, y);
+  }
+
+  /**
+   * A wash of firelight on a wall (the gate's shaded faces: its light bounced off the lit floor and the braziers): a
+   * quad standing `0.04` m before the face, its foot's middle at (x, y, z), `w` m across and `h` m up, facing (nx, nz)
+   * (unit, level); brightest at the foot's middle, fading out up it and to its sides.
+   */
+  wash(x: number, y: number, z: number, w: number, h: number, nx: number, nz: number, color: number, level: number): void {
+    this.c.setHex(color).multiplyScalar(level);
+    const base = this.pos.length / 3;
+    const tx = nz;
+    const tz = -nx;
+    for (const [u, v] of [
+      [-1, 0],
+      [1, 0],
+      [-1, 1],
+      [1, 1],
+    ]) {
+      const px = x + nx * 0.04 + tx * u * (w / 2);
+      const pz = z + nz * 0.04 + tz * u * (w / 2);
+      this.pos.push(px, y + v * h, pz);
+      this.loc.push(u, v);
+      this.col.push(this.c.r, this.c.g, this.c.b);
+      this.shape.push(0);
+      this.box.x0 = Math.min(this.box.x0, px);
+      this.box.x1 = Math.max(this.box.x1, px);
+      this.box.z0 = Math.min(this.box.z0, pz);
+      this.box.z1 = Math.max(this.box.z1, pz);
+    }
+    this.idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+    this.n++;
   }
 
   /** The mandala: a quad of half side `R` lying at `y`, the painted lotus on it. */
@@ -120,6 +153,8 @@ export class PlazaPools {
       transparent: true,
       depthWrite: false,
       blending: AdditiveBlending,
+      // (the gate's washes stand up: seen from either side)
+      side: DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -4,

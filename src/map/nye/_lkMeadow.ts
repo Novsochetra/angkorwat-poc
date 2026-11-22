@@ -57,6 +57,8 @@ const SIGHTS: readonly { c: readonly [number, number]; at: readonly [number, num
   { c: [-352, -54], at: [-372, -25] },
   { c: [-312, -104], at: [-362, -38] },
   { c: [-324, -88], at: [-360, -36] },
+  // (the art review's view from the high mesa behind, over the plaza to the stage: cam=-316,50,-123,-375,6,-20,50)
+  { c: [-316, -123], at: [-375, -20] },
 ];
 
 /** The avenue from the trails up to the plaza's gate (plan.ts `LAKE_AVENUE`): crowns keep off it, so it is seen. */
@@ -193,6 +195,10 @@ export function growLakeMeadow(b: VoxelBuilder, kit: Kit, glow: Glow, field: Hei
   const blooms = [0, 1, 2].map((i) => broadleaf({ s: 1, h: 8.5 + i * 1.5, r: 3.4 + i * 0.8, seed: 9760 + i * 13, flower: 'pink' }));
   const farGreens = [0, 1, 2].map((i) => broadleaf({ s: 2, h: 9 + i * 2, r: 3.6 + i, seed: 9800 + i * 13 }));
   const farBlooms = [0, 1].map((i) => broadleaf({ s: 2, h: 10 + i * 2, r: 4 + i, seed: 9840 + i * 13, flower: 'pink' }));
+  // (the same trees in the map's normal 1 m blocks, for the far ones the views over the plaza look down on: 2 m blocks
+  // there read as giant cubes, the art review)
+  const farGreensFine = [0, 1, 2].map((i) => broadleaf({ s: 1, h: 9 + i * 2, r: 3.6 + i, seed: 9800 + i * 13 }));
+  const farBloomsFine = [0, 1].map((i) => broadleaf({ s: 1, h: 10 + i * 2, r: 4 + i, seed: 9840 + i * 13, flower: 'pink' }));
   const grove = (n: number, dMin: number, dMax: number, far: boolean, salt: number) => {
     const goal = trees.length + n;
     for (let t = 0; t < 4000 && trees.length < goal; t++) {
@@ -202,7 +208,8 @@ export function growLakeMeadow(b: VoxelBuilder, kit: Kit, glow: Glow, field: Hei
       const x = ex + Math.cos(a) * d;
       const z = ez + Math.sin(a) * d;
       const bloom = far ? (hash3(t, 9, 0, salt) < 0.3 ? (t % 2 ? 'purple' : 'pink') : null) : trees.length % 3 === 1 ? (trees.length % 2 ? 'purple' : 'pink') : null;
-      const pool = far ? (bloom ? farBlooms : farGreens) : bloom ? blooms : greens;
+      const seen = far && camNear(x, z) < FAR_FINE;
+      const pool = far ? (bloom ? (seen ? farBloomsFine : farBlooms) : seen ? farGreensFine : farGreens) : bloom ? blooms : greens;
       const p = pool[Math.floor(hash3(t, 6, 0, salt) * pool.length)];
       const r = p.r;
       if (!solidOk(x, z, r * 0.7) || inSight(x, z, r)) continue;
@@ -211,7 +218,10 @@ export function growLakeMeadow(b: VoxelBuilder, kit: Kit, glow: Glow, field: Hei
       if (trees.some(([tx, tz, tr]) => Math.hypot(tx - x, tz - z) < (tr + r) * (far ? 0.85 : 0.8))) continue;
       if (!roomFor(field, x, z, r)) continue;
       const g = field.heightAt(x, z);
-      if (far) stamp(b, field, p, Math.round(x / 2) * 2, g, Math.round(z / 2) * 2, 9900 + t, bloom === 'purple' ? toPurple : null);
+      // (none on a cliff's lip: the hang glider's ramps take off there, roam/launchSpots.ts, and a crown there stands
+      // in the views over the plaza from the mesa)
+      if (g >= 16 && onLip(field, x, z, g, r + 5)) continue;
+      if (far && !seen) stamp(b, field, p, Math.round(x / 2) * 2, g, Math.round(z / 2) * 2, 9900 + t, bloom === 'purple' ? toPurple : null);
       else stamp(b, field, p, x, g, z, 9700 + t, bloom === 'purple' ? toPurple : null);
       field.occupy(x - r * 0.7, z - r * 0.7, x + r * 0.7, z + r * 0.7);
       trees.push([x, z, r]);
@@ -332,7 +342,16 @@ export function growLakeMeadow(b: VoxelBuilder, kit: Kit, glow: Glow, field: Hei
       const solid = !open && field.isFree(x, z) && solidOk(x, z, 1.2) && !trees.some(([tx, tz, tr]) => Math.hypot(tx - x, tz - z) < tr * 0.9) && !placed.some(([px, pz]) => Math.hypot(px - x, pz - z) < 1.6);
       const shrubShare = d < 9 ? 0.5 : d < 22 ? 0.45 : 0.38;
       const flowerShare = d < 9 ? 0.2 : d < 22 ? 0.13 : 0.07;
-      if (k < shrubShare && solid && d > 5 && hash3(x, z, 8, 657) < (d > 16 ? 0.55 : 0.4)) {
+      // (on the mesa and under the views from above: the venue garden's fine shrubs, not the map's 1 m bushes)
+      const fineHere = g > 16 || camNear(x, z) < CAM_FINE;
+      if (k < shrubShare && solid && fineHere) {
+        if (camNear(x, z) < CAM_CLEAR && hash3(x, z, 12, 657) < 0.6) flowerPatch(b, field, x, z, gi, low, src);
+        else {
+          const s = hash3(x, z, 6, 657);
+          fineShrub(b, x, g, z, s < 0.38 ? 'boug' : s < 0.58 ? 'hibiscus' : s < 0.82 ? 'ixora' : 'green', gi, low, src, camNear(x, z) < CAM_LOW ? 0.75 : 1);
+        }
+        count('shrubs');
+      } else if (k < shrubShare && solid && d > 5 && hash3(x, z, 8, 657) < (d > 16 ? 0.55 : 0.4)) {
         const bp = bushes[Math.floor(hash3(x, z, 9, 657) * bushes.length)];
         const f = hash3(x, z, 10, 657);
         const tones = f < 0.3 ? BOUG : f < 0.45 ? BOUG_PURPLE : f < 0.6 ? IXORA : null;
@@ -590,25 +609,38 @@ function fishermen(
 
 // ── The mesa ──
 
-/** The two views over the plaza from its gate side (l-over, l-ref: map x, z): nothing tall within this of them (m). */
+/**
+ * The views over the plaza from above its gate side (l-over, l-ref, and the art review's from the high mesa behind:
+ * map x, z): nothing tall within this of them (m).
+ */
 const OVER_CAMS: readonly (readonly [number, number])[] = [
   [-312, -104],
   [-324, -88],
+  [-316, -123],
 ];
 const CAM_CLEAR = 13;
 /** And within this, only low things (the cameras float a few metres over the mesa: a bush there is a wall of cubes). */
 const CAM_LOW = 22;
+/** Within this the meadow's shrubs are the venue garden's fine ones (`fineShrub`), not the map's 1 m bushes. */
+const CAM_FINE = 40;
+/** And the far groves' trees are in the map's 1 m blocks, not 2 m (m). */
+const FAR_FINE = 80;
+/** How far (m) the nearest of those cameras is from (x, z). */
+const camNear = (x: number, z: number): number => Math.min(...OVER_CAMS.map(([qx, qz]) => Math.hypot(qx - x, qz - z)));
 
 /**
  * The mesa north of the plaza (the land's: its top ≈ 22 m over the plaza, a sheer face just behind the lake trail) fills
  * the right of the views over the plaza (the owner's free camera floats over its top): its rim toward the plaza dressed
- * as the venue's garden — bougainvillea and flowering bushes, palms (none near those cameras), flower patches, Khmer
- * lamps along the edge, and bougainvillea cascading down the face. The rim: within 10 m of where the land drops 6 m or
- * more on the way to the plaza's middle, on flat top. In the shore's builder (leaf and petal soft, the lamps stone).
+ * as the venue's garden in fine blocks (the art review, AWP-35: the map's 1 m bushes and metre-wide shrub lumps read as
+ * giant cubes from up there) — `fineShrub` bougainvillea, hibiscus and ixora, palms (none near those cameras), flower
+ * patches and grass, Khmer lamps along the edge, bougainvillea cascading down the face and fine shrubs on the edge
+ * itself. The rim: within 10 m of where the land drops 6 m or more on the way to the plaza's middle, on flat top. Under
+ * the views (`OVER_CAMS`, `RESERVE`) the land's 2 m blocks' top edges get a kerb of laterite and sandstone, and the mesa
+ * is kept (`field.occupy`) from the vegetation part's trees. In the shore's builder (leaf and petal soft, the lamps and
+ * the kerb stone).
  */
 function dressMesa(b: VoxelBuilder, field: HeightField, lamps: Lamps | null, low: boolean, src: SourceTrace | undefined, done: () => void): void {
   const { x: cx, z: cz } = LAKE_SHORE;
-  const bushes = bushProtos(low);
   const palms: Proto[] = [0, 1, 2].map((i) => palmProto({ s: 1, h: 8 + i * 1.4, seed: 31 + i * 3 + (i === 2 ? 0 : 1) }));
   const lampsAt: [number, number][] = [];
   const palmsAt: [number, number][] = [];
@@ -635,37 +667,158 @@ function dressMesa(b: VoxelBuilder, field: HeightField, lamps: Lamps | null, low
       const c = field.index(x, z);
       if (c < 0 || field.trail[c] === 2 || field.occupied[c] || field.waterAt(x, z) !== null) continue;
       if ([[0.9, 0], [-0.9, 0], [0, 0.9], [0, -0.9]].some(([ox, oz]) => Math.abs(field.heightAt(x + ox, z + oz) - g) > 0.1)) continue;
-      // (under those cameras only what stays low: flowers, small shrubs; bushes and palms farther along the rim)
-      const camD = Math.min(...OVER_CAMS.map(([qx, qz]) => Math.hypot(qx - x, qz - z)));
+      // (under those cameras only what stays low: flowers, small shrubs; bigger shrubs and palms farther along the rim)
+      const camD = camNear(x, z);
       const nearCam = camD < CAM_CLEAR;
       const lowOnly = camD < CAM_LOW;
       const h = hash3(x, z, 3, 671);
-      // On the very edge: a lamp now and then, else bougainvillea spilling down the face.
+      // On the very edge: a lamp now and then, else bougainvillea spilling down the face, and the land's edge (its 2 m
+      // blocks' corner) under fine shrubs and flowers.
       if (face <= 2) {
         if (!low && !nearCam && lampsAt.every(([lx, lz]) => Math.hypot(lx - x, lz - z) > 9)) {
           khmerLamp(b, x, g, z, 1.2, 690 + lampsAt.length, src, lamps, null, 2.2);
           lampsAt.push([x, z]);
           field.occupy(x - 0.5, z - 0.5, x + 0.5, z + 0.5);
-        } else if (h < 0.55) cascade(b, field, x, z, g, dx, dz, face, Math.round(h * 997), low, src);
+        } else {
+          if (h < 0.55) cascade(b, field, x, z, g, dx, dz, face, Math.round(h * 997), low, src);
+          const e = hash3(x, z, 6, 671);
+          // (just back from the drop, so they sit on the edge's corner)
+          const ex = x + dx * Math.max(0, face - 0.9);
+          const ez = z + dz * Math.max(0, face - 0.9);
+          if (e < (low ? 0.4 : 0.55)) fineShrub(b, ex, g, ez, e < 0.25 ? 'boug' : e < 0.4 ? 'ixora' : 'green', Math.round(e * 9973) + 7300, low, src, lowOnly ? 0.6 : 0.8);
+          else if (e < 0.85) flowerPatch(b, field, ex, ez, Math.round(e * 4241) + 7400, low, src);
+        }
         continue;
       }
       if (!lowOnly && h < 0.09 && palmsAt.every(([px, pz]) => Math.hypot(px - x, pz - z) > 7)) {
         stamp(b, field, palms[Math.floor(hash3(x, z, 4, 671) * palms.length)], x, g, z, 6000 + palmsAt.length, null);
         palmsAt.push([x, z]);
         field.occupy(x - 0.6, z - 0.6, x + 0.6, z + 0.6);
-      } else if (h < 0.42) {
-        const kind: Shrub = h < 0.25 ? 'boug' : h < 0.34 ? 'hibiscus' : 'ixora';
-        shrub(b, field, x, g, z, kind, Math.round(h * 9973) + 7000, low, src);
-      } else if (h < 0.62 && !lowOnly && field.isFree(x, z)) {
-        const bp = bushes[Math.floor(hash3(x, z, 5, 671) * bushes.length)];
-        const tones = h < 0.52 ? BOUG : BOUG_PURPLE;
-        const gi = Math.round(h * 7919);
-        stamp(b, field, bp, x, g, z, gi, (color, ci) => (BUSH_LIT.has(color) && hash3(ci, gi, 1, 672) < 0.5 ? tones[ci % tones.length] : color));
-        field.occupy(x - bp.r * 0.6, z - bp.r * 0.6, x + bp.r * 0.6, z + bp.r * 0.6);
-      } else if (h < 0.8) flowerPatch(b, field, x, z, Math.round(h * 4241) + 7100, low, src);
+      } else if (h < (low ? 0.3 : 0.4)) {
+        const kind: Shrub = h < 0.2 ? 'boug' : h < 0.28 ? 'hibiscus' : 'ixora';
+        fineShrub(b, x, g, z, kind, Math.round(h * 9973) + 7000, low, src, lowOnly ? 0.7 : 1);
+      } else if (h < 0.48 && !lowOnly && field.isFree(x, z)) {
+        fineShrub(b, x, g, z, h < 0.45 ? 'boug' : 'green', Math.round(h * 7919) + 7200, low, src, 1.3);
+        field.occupy(x - 0.8, z - 0.8, x + 0.8, z + 0.8);
+      } else if (h < 0.75) flowerPatch(b, field, x, z, Math.round(h * 4241) + 7100, low, src);
+      else if (h < 0.9) grassClump(b, x, g, z, Math.round(h * 3331) + 7500, false, low, src);
       done();
     }
+  // The land's 2 m blocks' top edges under those views (their corners read as giant cubes from up there, the art
+  // review): a kerb along each, laterite and sandstone stones in the plaza's block size on the block's lip.
+  {
+    const { cell: C, x0: fx0, z0: fz0, nx } = field;
+    const done2 = new Set<number>();
+    for (const [qx, qz] of OVER_CAMS)
+      for (let k = Math.floor((qz - RESERVE - fz0) / C); k <= Math.floor((qz + RESERVE - fz0) / C); k++)
+        for (let i = Math.floor((qx - RESERVE - fx0) / C); i <= Math.floor((Math.min(qx + RESERVE, RESERVE_X1) - fx0) / C); i++) {
+          const c = i + k * nx;
+          if (done2.has(c)) continue;
+          done2.add(c);
+          const cx = fx0 + (i + 0.5) * C;
+          const cz = fz0 + (k + 0.5) * C;
+          if (Math.hypot(cx - qx, cz - qz) > RESERVE) continue;
+          const g = field.height[c];
+          if (g < 16 || field.water[c] > -1000) continue;
+          for (const [sx, sz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+            if (field.heightAt(cx + sx * C, cz + sz * C) > g - 1.5) continue;
+            // (four stones along the side, on the lip)
+            for (let t = 0; t < 4; t++) {
+              const along = -0.75 + t * 0.5;
+              const x = cx + sx * (C / 2 - 0.22) + (sz !== 0 ? along : 0);
+              const z = cz + sz * (C / 2 - 0.22) + (sx !== 0 ? along : 0);
+              const h = hash3(i * 4 + t, k, sx * 3 + sz, 679);
+              const tone = h < 0.55 ? pick(LATERITE, i, k, t, 679) : pick(PAVER, i, k, t, 680);
+              b.box(x, g + 0.1, z, sz !== 0 ? 0.5 : 0.44, 0.3 + 0.04 * h, sx !== 0 ? 0.5 : 0.44, tone, 'mapStone', { src, shade: 0.92 + 0.12 * h });
+            }
+          }
+        }
+    done();
+  }
+  // The mesa under those views kept for the venue's fine planting: the vegetation part's trees (2 m blocks out here)
+  // keep off it, and so do the hang glider's ramps (as when its bushes stood there: the ramp stays at the mesa's east
+  // end, roam/launchSpots.ts).
+  for (const [qx, qz] of OVER_CAMS)
+    for (let gz = qz - RESERVE; gz <= qz + RESERVE; gz += 1)
+      for (let gx = qx - RESERVE; gx <= Math.min(qx + RESERVE, RESERVE_X1); gx += 1)
+        if (Math.hypot(gx - qx, gz - qz) <= RESERVE && field.heightAt(gx, gz) >= 16 && field.waterAt(gx, gz) === null) field.occupy(gx - 0.5, gz - 0.5, gx + 0.5, gz + 0.5);
   done();
+}
+
+/** Whether the land drops 6 m or more within `reach` m of (x, z) (its top at `g`): a cliff's lip. */
+function onLip(field: HeightField, x: number, z: number, g: number, reach: number): boolean {
+  for (let a = 0; a < 16; a++) {
+    const dx = Math.cos((a / 16) * Math.PI * 2);
+    const dz = Math.sin((a / 16) * Math.PI * 2);
+    for (let k = 1; k <= reach; k += 1) if (field.heightAt(x + dx * k, z + dz * k) < g - 6) return true;
+  }
+  return false;
+}
+
+/** How far round those cameras the mesa is kept for the venue's planting (m), and no further east than this (the ramp's room). */
+const RESERVE = 24;
+const RESERVE_X1 = -299;
+
+/** Leaves (dark low in the bush, lighter on top) and each kind's flowers, for `fineShrub`. */
+const FINE_LEAF = [0x24452a, 0x2e5530, 0x3a6534, 0x467438, 0x55823c];
+const FINE_GREEN = [0x203d29, 0x2b4e30, 0x375e34, 0x466e37, 0x587f3a];
+const FINE_FLOWERS: Record<Shrub, readonly number[]> = {
+  boug: BOUG,
+  hibiscus: [0xd8202e, 0xe23a3a, 0xc81a2a, 0xf06a8a],
+  ixora: IXORA,
+  green: [],
+};
+
+/**
+ * A flowering shrub in the venue garden's fine blocks (≈ 0.3 m, 0.42 on low; the plaza's beds' and the villages'
+ * bougainvillea's size, not the map's 1 m bushes nor `shrub`'s metre-wide lumps, which read as giant cubes from the
+ * views over the plaza: the art review, AWP-35): a lumpy mound of leaf cells, only its shell, flowers among the cells on
+ * its top and sides (bougainvillea thick with them, hibiscus a few, ixora in clusters on top), turned at random. `k`
+ * scales it (small under the cameras). Soft (leaf, petal).
+ */
+function fineShrub(b: VoxelBuilder, x: number, g: number, z: number, kind: Shrub, seed: number, low: boolean, src: SourceTrace | undefined, k = 1): void {
+  const rnd = (i: number) => hash3(seed, i, 3, 676);
+  const [R0, H0] =
+    kind === 'boug' ? [0.85 + 0.4 * rnd(1), 0.9 + 0.5 * rnd(2)] : kind === 'hibiscus' ? [0.6 + 0.25 * rnd(1), 1.3 + 0.5 * rnd(2)] : kind === 'ixora' ? [0.5 + 0.25 * rnd(1), 0.6 + 0.3 * rnd(2)] : [0.75 + 0.4 * rnd(1), 0.8 + 0.4 * rnd(2)];
+  const R = R0 * k;
+  const H = H0 * k;
+  const c = low ? 0.42 : 0.3;
+  const ni = Math.ceil(R / c) + 1;
+  const nj = Math.ceil(H / c) + 1;
+  const cy = H * 0.55;
+  const purple = kind === 'boug' && rnd(4) < 0.35;
+  const flowers = purple ? BOUG_PURPLE : FINE_FLOWERS[kind];
+  const share = kind === 'boug' ? 0.42 : kind === 'hibiscus' ? 0.12 : kind === 'ixora' ? 0.3 : 0;
+  const leaves = kind === 'green' ? FINE_GREEN : FINE_LEAF;
+  const ry = rnd(5) * Math.PI * 2;
+  const cs = Math.cos(ry);
+  const sn = Math.sin(ry);
+  const inside = (i: number, j: number, q: number): boolean => {
+    if (j < 0) return true;
+    const px = i * c;
+    const py = (j + 0.5) * c;
+    const pz = q * c;
+    const lump = valueNoise3(px * 1.7 + seed * 0.37, py * 1.7, pz * 1.7, 677) - 0.5;
+    return (px * px + pz * pz) / (R * R) + ((py - cy) * (py - cy)) / (cy * cy) < 1 + 0.45 * lump;
+  };
+  for (let j = 0; j < nj; j++)
+    for (let i = -ni; i <= ni; i++)
+      for (let q = -ni; q <= ni; q++) {
+        if (!inside(i, j, q)) continue;
+        // (only the shell: a cell with all six neighbours inside is never seen)
+        if (inside(i + 1, j, q) && inside(i - 1, j, q) && inside(i, j + 1, q) && inside(i, j - 1, q) && inside(i, j, q + 1) && inside(i, j, q - 1)) continue;
+        const px = i * c;
+        const pz = q * c;
+        const py = (j + 0.5) * c;
+        const up = py / H;
+        const h = hash3(i, j * 31 + q, seed, 678);
+        // (flowers where the light falls: on the top and the upper sides; ixora's in clusters on top)
+        const top = !inside(i, j + 1, q);
+        const bloom = share > 0 && (kind === 'ixora' ? top && up > 0.5 && h < 0.6 : up > 0.3 && h < share * (0.5 + up));
+        const tone = bloom ? flowers[Math.floor(h * 97) % flowers.length] : leaves[Math.max(0, Math.min(leaves.length - 1, Math.round(up * 3.4 + h * 1.4 - 0.5)))];
+        const s = c * (1 + 0.1 * (h - 0.5));
+        b.box(x + cs * px + sn * pz, g + py - 0.04, z - sn * px + cs * pz, s, s * (bloom ? 0.8 : 1), s, tone, bloom ? 'petal' : 'mapLeaf', { src, ry, shade: 0.88 + 0.2 * up });
+      }
 }
 
 /** Bougainvillea hanging from the mesa's edge down its face (toward (dx, dz), the face `face` m out): a curtain of bracts and leaves. */

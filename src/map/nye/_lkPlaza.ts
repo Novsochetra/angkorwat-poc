@@ -136,9 +136,10 @@ export function buildPlaza(o: PlazaIn): Plaza {
       const h = hash3(k, i, 3, 472);
       if (thin && r1 >= R - 0.05) return [pick(LATERITE, k, i, 4, 472), 0.94 + 0.06 * h];
       if (thin) return [pick(DARK_COURSE, k, i, 2, 472), 0.96 + 0.06 * h];
+      // (under the lotus only pale stones: a mended one there read as a dark patch on the gold, AWP-35)
+      if (r1 <= LAKE_MANDALA.r + 0.2) return [pick(PAVER_LIGHT, k, i, 1, 472), 0.97 + 0.07 * h];
       // (now and then a mended stone)
       if (h < 0.025) return [pick(LATERITE, k, i, 6, 472), 0.96];
-      if (r1 <= LAKE_MANDALA.r + 0.2) return [pick(PAVER_LIGHT, k, i, 1, 472), 0.97 + 0.07 * h];
       return [Math.floor(k / 2) % 2 ? pick(PAVER, k, i, 7, 472) : pick(PAVER_LIGHT, k, i, 8, 472), 0.97 + 0.08 * h];
     };
     const off = hash3(k, 1, 1, 473) * Math.PI;

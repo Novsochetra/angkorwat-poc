@@ -72,6 +72,7 @@ export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, b
   // ── The gopura, square in its own builder: x along the wall, z outward ──
   const lb = new VoxelBuilder();
   gopura(lb, ground);
+  solidFaces(lb);
   const F = new Frame(gx, 0, gz, yawOut);
   F.place(lb, out);
   const occupyBox = (x0: number, z0: number, x1: number, z1: number) => {
@@ -83,6 +84,27 @@ export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, b
       }
   };
   occupyBox(-(NI * C) / 2 - 0.5, -(NK * C) / 2 - 0.5, (NI * C) / 2 + 0.5, (NK * C) / 2 + 0.5);
+  // The firelight bounced onto its shaded faces (the plaza's real light stands on the avenue side): washes on the plaza
+  // side's two wings, both ends, and the tower's back and sides over the cornice.
+  if (pools) {
+    const wash = (lx: number, lz: number, ly: number, w: number, h: number, nlx: number, nlz: number, level: number) => {
+      const nx = nlx * F.c + nlz * F.s;
+      const nz = -nlx * F.s + nlz * F.c;
+      pools.wash(F.wx(lx, lz), ground + ly, F.wz(lx, lz), w, h, nx, nz, 0xffa458, level);
+    };
+    const hx = (NI * C) / 2;
+    const hz = (NK * C) / 2;
+    const body = (TOP_ROW + 1) * C;
+    for (const sx of [-1, 1]) wash(sx * 2.42, -hz, 0.2, 2.4, body - 0.2, 0, -1, 0.3);
+    for (const sx of [-1, 1]) wash(sx * hx, 0, 0.2, NK * C + 0.2, body - 0.2, sx, 0, 0.26);
+    const towerHalf = 4.5 * C;
+    for (const [nlx, nlz] of [
+      [0, -1],
+      [-1, 0],
+      [1, 0],
+    ])
+      wash(nlx * towerHalf, nlz * towerHalf, body + 2 * C, 2 * towerHalf, 3.0, nlx, nlz, 0.22);
+  }
   // Its night: fire bowls on the cornice at the outer corners, a tower lantern hanging in each mouth of the passage,
   // oil lamps set in the false windows' gaps.
   for (const sx of [-1, 1]) {
@@ -221,6 +243,36 @@ export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, b
     };
   }
   return { blocks: out.boxes.length - n0, naga };
+}
+
+/** The warm of firelight bounced off the floor and the braziers (sRGB). */
+const BOUNCE = 0xe0a468;
+
+/**
+ * Solid sandstone faces (the art review, AWP-35: at night the gate read as a navy-and-black lattice, each 0.22 m cell's
+ * bevelled edges a groove and its top a navy square under the sky): every cell with a hair of a bevel only (so a face
+ * reads as one surface of stone, its tones and the carving's steps doing the work), and its faces warmed a little, as
+ * the firelight bouncing off the floor and the braziers would: most the tops under the night sky, then the plaza side
+ * and the ends, least the avenue side (+z), which the plaza's real light reaches.
+ */
+function solidFaces(lb: VoxelBuilder): void {
+  const br = (BOUNCE >> 16) & 255;
+  const bg = (BOUNCE >> 8) & 255;
+  const bb = BOUNCE & 255;
+  for (const box of lb.boxes) {
+    // (under a pixel at any distance a camera sees it from: no groove between cells)
+    box.radius = 0.0015;
+    const o = box.open ?? 63;
+    if (!(o & (1 | 2 | 4 | 16 | 32))) continue;
+    // (the tops under the sky most, the plaza side and the ends, the avenue side least)
+    const k = o & 4 ? 0.42 : o & (1 | 2 | 32) ? 0.32 : 0.2;
+    const c = box.color;
+    const r = Math.round(((c >> 16) & 255) * (1 - k) + br * k);
+    const g = Math.round(((c >> 8) & 255) * (1 - k) + bg * k);
+    const b = Math.round((c & 255) * (1 - k) + bb * k);
+    box.color = (r << 16) | (g << 8) | b;
+    box.shade *= 1.1;
+  }
 }
 
 /** The gopura on its grid, in its own frame (x across, z outward; its middle at the origin; y the map's). */
