@@ -450,7 +450,11 @@ export class NyeLakeLife implements PeopleScene {
     const s = nyeSeconds() + (this.env.shot ? now - this.now0 - SHOT_LEAD : 0);
     const night = (!this.env.shot || nyeAsked()) && s >= LAKE_COME && s < NYE_TIMES.nightTo;
     // (the plaza's firelight on its people on the event night, as it gets dark: _personModel.ts `PEOPLE_FIRE`)
-    PEOPLE_FIRE.value[1].set(LAKE_SHORE.x, LAKE_SHORE.z, LAKE_WALL.r + 12, night ? FIRE * Math.min(1, Math.max(0, (f.night - 0.3) / 0.4)) : 0);
+    // (and taken off the performers on the floating stage, lit by its own lamps)
+    const fire = night ? FIRE * Math.min(1, Math.max(0, (f.night - 0.3) / 0.4)) : 0;
+    PEOPLE_FIRE.value[1].set(LAKE_SHORE.x, LAKE_SHORE.z, LAKE_WALL.r + 12, fire);
+    stagePt(0, 1, UV);
+    PEOPLE_FIRE.value[3].set(UV.x, UV.z, 10, -fire);
     const c = f.clock - Math.floor(f.clock);
     const low = graphicsNow.level === 'low';
     this.rigs(night, s, low);
@@ -1164,7 +1168,7 @@ export class NyeLakeLife implements PeopleScene {
     this.shown = false;
     this.rigs(false, 0);
     sparksOut('lake');
-    PEOPLE_FIRE.value[1].w = 0;
+    PEOPLE_FIRE.value[1].w = PEOPLE_FIRE.value[3].w = 0;
     this.inRing.fill(0);
     this.away.fill(0);
     for (const r of this.boats) r.rig.hide();

@@ -98,10 +98,10 @@ const LEVEL_SPARKS: Record<GraphicsLevel, number> = { low: 0.28, medium: 0.52, h
 /** Spark instances a rocket on each level (the most a rocket has there). */
 const PER = Object.fromEntries(Object.entries(LEVEL_SPARKS).map(([k, v]) => [k, Math.ceil(Math.max(...Object.values(SPARKS)) * 1.12 * v)])) as Record<GraphicsLevel, number>;
 /**
- * Lines of the data texture: rockets in the air at once, at most (both sites' finale: ≈ 220 with their smoke; on low,
+ * Lines of the data texture: rockets in the air at once, at most (both sites' finale: ≈ 250 with their smoke; on low,
  * without smoke, near a site the other's small low ones left out: fewer; `fwstats=1` logs the busiest second).
  */
-const SLOTS = 256;
+const SLOTS = 288;
 /** How long after its burst a rocket is still drawn: its sparks (their kind's life, up to 1.15 times it: a willow 7.4 s), the smoke 9 s. */
 const SPARK_LIFE: Record<BurstKind, number> = { peony: 3.4, chrysanthemum: 4.0, willow: 7.4, crackle: 2.0, ring: 3.3, palm: 4.6, comet: 2.2, angkor: 6.1 };
 const SMOKE_LIFE = 9;

@@ -109,14 +109,15 @@ export function layFloor(b: VoxelBuilder, field: HeightField, low: boolean): num
         color = pick(BED, x, z, 11, 71);
         top = TOP - 0.035;
       } else if (e > 1 && !onWay) {
-        // Loose pavers past the border, fewer and lower the farther out (none where water or a trail is).
-        const out = (e - 1) / 0.15;
-        if (out >= 1 || h > 0.55 * (1 - out) * (1 - out) || low) continue;
+        // Loose pavers just past the border, few, bedded flush in the grass (none where water or a trail is): the floor
+        // fades into the meadow, no dark slab lies dropped on it.
+        const out = (e - 1) / 0.1;
+        if (out >= 1 || h > 0.35 * (1 - out) * (1 - out) || low) continue;
         const c = field.index(x, z);
         if (c < 0 || field.waterAt(x, z) !== null || field.trail[c] === 2) continue;
-        color = pick(hash3(x, z, 9, 71) < 0.5 ? PAVER : LATERITE, x, z, 7, 71);
-        shade *= 0.88;
-        top = 0.03 - 0.03 * out;
+        color = pick(PAVER, x, z, 7, 71);
+        shade *= 0.94;
+        top = 0.015 - 0.02 * out;
       } else if (onWay) color = pick(PAVER_LIGHT, x, z, 3, 71);
       else if (e > 0.94) {
         color = pick(LATERITE, x, z, 4, 71);

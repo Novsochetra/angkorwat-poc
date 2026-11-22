@@ -127,6 +127,29 @@ const Q2 = { x: 0, z: 0 };
 const LOOK: Point = { x: 0, y: 0, z: 0 };
 const HAND = { x: 0, y: 0, z: 0 };
 
+/**
+ * The stage's apsara in their own colours under its warm lamps (the lead's art review: they read as one flat orange):
+ * the dancers' pale make-up on face and arms, a jewel-coloured bodice, a silk sampot of another colour, the gold of the
+ * mokot and the jewellery kept (the map's `dancer` kind is Angkor Wat's, `_kinds.ts`: changed here only).
+ */
+const APSARA = [
+  { top: 0x1f6a4a, low: 0xd8a838 },
+  { top: 0x8a1a3a, low: 0x1f6a7a },
+  { top: 0x2a4a9a, low: 0xb02870 },
+  { top: 0x5a2a8a, low: 0xd8b048 },
+] as const;
+function apsaraLook(l: Look, k: number): Look {
+  const colors = l.colors.slice();
+  const c = APSARA[k % APSARA.length];
+  for (const s of [SLOT.skin, SLOT.sleeveL, SLOT.sleeveR, SLOT.foreL, SLOT.foreR, SLOT.foot, SLOT.sole]) colors[s] = 0xf0dcc6;
+  colors[SLOT.mouth] = 0xb04a4a;
+  colors[SLOT.top] = c.top;
+  for (const s of [SLOT.hips, SLOT.thigh, SLOT.shin]) colors[s] = c.low;
+  colors[SLOT.accent] = 0xe8c050;
+  colors[SLOT.gold] = 0xf0c24e;
+  return { ...l, colors };
+}
+
 /** The ordinary days' hours (`clock`): sellers and the attendant, the children, the evening's visitors. */
 const OPEN = (c: number) => c >= 0.8 || c < 0.4;
 const KIDS = (c: number) => c >= 0.86 || c < 0.2;
@@ -299,7 +322,7 @@ export class NyeLife implements PeopleScene {
     }
     // The stage: the dancers and the pinpeat players (white shirts).
     DANCERS.forEach((_, k) => {
-      const a = mk(dress('dancer', 9350 + k, { young: k === 3 }));
+      const a = mk(apsaraLook(dress('dancer', 9350 + k, { young: k === 3 }), k));
       a.avoid(null);
       this.dancers.push(a);
     });
@@ -345,7 +368,10 @@ export class NyeLife implements PeopleScene {
     // (the night only when the URL asks for it in a shot, as the hold: nye/clock.ts)
     const night = (!this.env.shot || nyeAsked()) && s >= COME_FROM && s < NYE_TIMES.nightTo;
     // (the square's firelight on its people on the event night, as it gets dark: _personModel.ts `PEOPLE_FIRE`)
-    PEOPLE_FIRE.value[0].set(SQUARE.x, SQUARE.z, Math.max(SQUARE.rx, SQUARE.rz) + 8, night ? FIRE * Math.min(1, Math.max(0, (f.night - 0.3) / 0.4)) : 0);
+    // (and taken off the apsara on the stage, lit by its own lamps: their colours keep, not one flat orange)
+    const fire = night ? FIRE * Math.min(1, Math.max(0, (f.night - 0.3) / 0.4)) : 0;
+    PEOPLE_FIRE.value[0].set(SQUARE.x, SQUARE.z, Math.max(SQUARE.rx, SQUARE.rz) + 8, fire);
+    PEOPLE_FIRE.value[2].set(STAGE.x, STAGE.front - 2.5, 8, -fire);
     const c = f.clock - Math.floor(f.clock);
     const low = graphicsNow.level === 'low';
     this.rigs(night, s);
@@ -897,7 +923,7 @@ export class NyeLife implements PeopleScene {
     this.shown = false;
     this.rigs(false, 0);
     sparksOut('kulen');
-    PEOPLE_FIRE.value[0].w = 0;
+    PEOPLE_FIRE.value[0].w = PEOPLE_FIRE.value[2].w = 0;
     this.inRing.fill(0);
     this.away.fill(0);
     for (const a of this.actors) {
