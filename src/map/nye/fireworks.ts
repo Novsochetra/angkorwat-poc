@@ -159,8 +159,8 @@ export function buildFireworks(ctx: MapContext): MapPart {
   // (the launch points on the land: the script's are on the hill as it is about; drawn from the land itself)
   const launchY = script.map((r) => Math.max(r.y, field.heightAt(r.x, r.z) + 0.5));
   const seeds = script.map((r) => (r.seed % 65521) / 65521);
-  // (flags: 1 glitter, 2 a crossette)
-  const flags = script.map((r) => (isGlitter(r) ? 1 : 0) + (r.cross ? 2 : 0));
+  // (flags: 1 glitter, 2 a crossette, 4 a valley shell)
+  const flags = script.map((r) => (isGlitter(r) ? 1 : 0) + (r.cross ? 2 : 0) + (r.valley ? 4 : 0));
   // (the point each faces: the signature's picture turns to it; its site's crowd view by default)
   const faceX = script.map((r) => r.face?.[0] ?? SHOW_SITES[r.site].view[0]);
   const faceZ = script.map((r) => r.face?.[1] ?? SHOW_SITES[r.site].view[2]);

@@ -94,6 +94,8 @@ export interface Rocket {
    * near a site is the same on every device.
    */
   close: boolean;
+  /** A valley shell (low, near a venue: `valleyShells`): its glow and flash kept small and soft. */
+  valley?: boolean;
 }
 
 /** The two shows, one clock: over Phnom Kulen for the festival square, over the great lake for the lakeside crowd. */
@@ -831,8 +833,10 @@ function lakeShow(): Rocket[] {
 // ── The valley shells ───────────────────────────────────────────────────────────────────────────────────────────────
 //
 // Low shells, small to mid (13‥26 m), 25‥60 m up: over the Kulen pool, the picnic place and the plain east of the falls
-// (in front of the falls' benches, which hide what is behind them from over the square), and over the water just behind
-// the lake stage, in front of the big shells' falling gold; so the views from above (over the square, over the lake's
+// (in front of the falls' benches, which hide what is behind them from over the square), and over the open water well
+// out behind the lake stage (150‥215 m from the terrace, not right behind the stage), in front of the big shells' falling
+// gold; never ice or white, their glow and flash small and soft (`Rocket.valley`: so near, a bright pale one hazed the
+// plaza and its trees); so the views from above (over the square, over the lake's
 // plaza: their pictures end a few degrees over the horizon) have bursts in them too, while the crowds see them low under
 // the big ones. A few through the show, more as it builds, a steady stream through the finale in colours that stand out
 // from its gold willows. Their own seeds: the rest of the script is as it was.
@@ -841,9 +845,11 @@ function lakeShow(): Rocket[] {
 /** Kulen's: bearing (° right of north) and distance (m) from the square, radius (m), height over the sea (m). */
 const VALLEY = { b: [38, 64], d: [78, 120], size: [13, 20], y: [30, 58] };
 /** In the finale, colours that stand out from its gold willows. */
-const FINALE_VALLEY: readonly ShowColour[] = ['purple', 'lotus', 'ice', 'jade', 'lotus', 'purple'];
+const FINALE_VALLEY: readonly ShowColour[] = ['purple', 'lotus', 'jade', 'lotus', 'purple'];
+/** Through the show (never ice or white so near the venues: a bright pale burst low over the water hazed the plaza). */
+const VALLEY_COLOURS: readonly ShowColour[] = ['gold', 'purple', 'lotus', 'gold', 'jade', 'lotus', 'purple', 'red', 'blue'];
 /** The lake's: bearing and distance from the terrace, radius, height over the sea. */
-const LAKE_VALLEY = { b: [206, 256], d: [110, 165], size: [18, 26], y: [26, 44] };
+const LAKE_VALLEY = { b: [206, 256], d: [150, 215], size: [18, 26], y: [26, 44] };
 
 function valleyShells(site: ShowSite): Rocket[] {
   const lake = site === 'lake';
@@ -867,14 +873,16 @@ function valleyShells(site: ShowSite): Rocket[] {
   const fire = (at: number) => {
     const k = rnd();
     const kind: BurstKind = k < 0.45 ? 'peony' : k < 0.8 ? 'chrysanthemum' : k < 0.9 ? 'ring' : 'crackle';
-    const c: ShowColour = kind === 'crackle' ? (rnd() < 0.5 ? 'gold' : 'white') : at > 425 ? m.pick(FINALE_VALLEY) : rnd() < 0.1 ? m.pick(ACCENT) : m.pick(BRIGHT);
+    const c: ShowColour = kind === 'crackle' ? 'gold' : m.pick(at > 425 ? FINALE_VALLEY : VALLEY_COLOURS);
+    const c2 = m.pick((SECOND[c] ?? [c]).filter((k) => k !== 'white' && k !== 'ice'));
     const s = spot();
     let r: Rocket;
     if (lake) {
       const b = bargeNear(s.x, s.z);
-      r = m.fireFrom(at, s, b.x + (rnd() - 0.5) * 3, b.z + (rnd() - 0.5) * 3, Math.min(4, 1.2 + Math.sqrt(s.y - DECK) * 0.17 + rnd() * 0.25), kind, c, m.pick(SECOND[c] ?? [c]));
-    } else r = m.fire(at, s, kind, c, m.pick(SECOND[c] ?? [c]));
+      r = m.fireFrom(at, s, b.x + (rnd() - 0.5) * 3, b.z + (rnd() - 0.5) * 3, Math.min(4, 1.2 + Math.sqrt(s.y - DECK) * 0.17 + rnd() * 0.25), kind, c, c2);
+    } else r = m.fire(at, s, kind, c, c2);
     r.close = true;
+    r.valley = true;
     return r;
   };
   const signatures = [7.2, 205, 338];
