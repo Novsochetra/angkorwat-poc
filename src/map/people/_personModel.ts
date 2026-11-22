@@ -428,9 +428,10 @@ export const FEAT = {
   /** A sprig for the blessing's water (`POSE.bless`): a stem (`wood`), a bunch of leaves (`prop2`), a lotus bud (`prop`), along the right fist's grip. */
   sprig: 45,
   /**
-   * A festival krama wound round the head as cloth (the New Year crowd: people/_nyeGroups.ts `festiveLooks`): a
-   * rounded band low over the brow and a soft crown in its cream (`accent2`), a fine muted check (`accent`), a knot and
-   * a short tail at the left side. Softer than the work krama (`kramaHead`).
+   * A festival krama wound round the head as cloth (the New Year crowd: people/_nyeGroups.ts `festiveLooks`): twisted
+   * into a roll and wound twice round the short hair in its cream (`accent2`), the hair showing in the middle from
+   * above, a fine muted check as thin lines round the turns (`accent`), a knot and a short tail at the left side.
+   * Softer than the work krama (`kramaHead`).
    */
   kramaWrap: 46,
   /**
@@ -666,25 +667,25 @@ function buildModel(): Builder {
     .box('head', [0.2, 1.53, -0.265], [0.12, 0.11, 0.09], S.accent, F.kramaHead)
     .box('head', [0.23, 1.39, -0.275], [0.09, 0.18, 0.04], S.accent, F.kramaHead)
     .box('head', [0.23, 1.285, -0.275], [0.092, 0.035, 0.042], S.accent2, F.kramaHead);
-  // The festival krama (kramaWrap): a rounded band (two crossed boxes) low over the brow, a soft crown stepped in, a
-  // fine check (thin bands round it and a few small squares on top), a knot at the left side and its tail.
-  // (over the short hair: the band round it from the brow, the crown just over its top)
-  m.box('head', [0, 1.525, 0.01], [0.64, 0.16, 0.53], S.accent2, F.kramaWrap)
-    .box('head', [0, 1.525, 0.01], [0.57, 0.16, 0.585], S.accent2, F.kramaWrap)
-    .box('head', [0, 1.64, -0.01], [0.625, 0.07, 0.505], S.accent2, F.kramaWrap)
-    .box('head', [0, 1.69, -0.02], [0.44, 0.04, 0.36], S.accent2, F.kramaWrap);
-  for (const y of [1.475, 1.57]) m.box('head', [0, y, 0.01], [0.644, 0.014, 0.534], S.accent, F.kramaWrap).box('head', [0, y, 0.01], [0.574, 0.014, 0.589], S.accent, F.kramaWrap);
-  for (const [x, z] of [
-    [-0.12, -0.12],
-    [0.12, -0.12],
-    [0, -0.02],
-    [-0.12, 0.08],
-    [0.12, 0.08],
-  ])
-    m.box('head', [x, 1.711, z], [0.07, 0.006, 0.07], S.accent, F.kramaWrap);
-  m.box('head', [0.335, 1.51, -0.13], [0.07, 0.1, 0.12], S.accent2, F.kramaWrap)
-    .box('head', [0.35, 1.39, -0.16], [0.04, 0.17, 0.09], S.accent2, F.kramaWrap)
-    .box('head', [0.35, 1.3, -0.16], [0.042, 0.03, 0.092], S.accent, F.kramaWrap);
+  // The festival krama (kramaWrap): a long cloth twisted into a roll and wound twice round the head over the short
+  // hair, the two turns a little apart (the upper set back and to the right: a twist), each rounded by two crossed
+  // boxes; the hair shows in the middle from above (the upper turn's top just under the hair's). Its fine check only
+  // as thin lines round the turns' sides; a knot at the left side and its tail.
+  const turn = (x: number, y: number, z: number, h: number, w: number, d: number) =>
+    m.box('head', [x, y, z], [w, h, d], S.accent2, F.kramaWrap).box('head', [x, y, z], [w - 0.08, h, d + 0.07], S.accent2, F.kramaWrap);
+  // (both a hand's breadth round the hair on every side, so from above they ring it)
+  turn(0, 1.495, -0.02, 0.1, 0.72, 0.6);
+  turn(-0.015, 1.592, -0.035, 0.09, 0.7, 0.58);
+  // (the check: a line round each turn's side, a hair proud of it)
+  for (const [x, y, z, w, d] of [
+    [0, 1.47, -0.02, 0.72, 0.6],
+    [0, 1.52, -0.02, 0.72, 0.6],
+    [-0.015, 1.6, -0.035, 0.7, 0.58],
+  ] as const)
+    m.box('head', [x, y, z], [w + 0.006, 0.012, d + 0.006], S.accent, F.kramaWrap).box('head', [x, y, z], [w - 0.074, 0.012, d + 0.076], S.accent, F.kramaWrap);
+  m.box('head', [0.37, 1.52, -0.15], [0.07, 0.11, 0.12], S.accent2, F.kramaWrap)
+    .box('head', [0.385, 1.4, -0.18], [0.04, 0.17, 0.09], S.accent2, F.kramaWrap)
+    .box('head', [0.385, 1.31, -0.18], [0.042, 0.03, 0.092], S.accent, F.kramaWrap);
   // The Khmer apsara crown (mokot), as on Angkor Wat's devata and in the Royal Ballet's Robam Tep Apsara: a gold
   // band and diadem with a red jewel at the front, THREE tall spikes in a row across it (the middle one tallest,
   // each tapering to its point, a jewel at its foot), strands of white jasmine hanging at the sides by the ears,
@@ -934,8 +935,7 @@ function buildFarModel(): Builder {
     .box('head', [0, 1.76, 0], [0.52, 0.26, 0.52], S.hat, F.hatPalm)
     .box('head', [0, 1.55, 0.01], [0.625, 0.22, 0.515], S.accent2, F.kramaHead)
     .box('head', [0, 1.53, 0.01], [0.63, 0.07, 0.52], S.accent, F.kramaHead)
-    .box('head', [0, 1.525, 0.01], [0.64, 0.17, 0.53], S.accent2, F.kramaWrap)
-    .box('head', [0, 1.65, -0.01], [0.6, 0.09, 0.5], S.accent2, F.kramaWrap)
+    .box('head', [0, 1.545, -0.02], [0.72, 0.19, 0.6], S.accent2, F.kramaWrap)
     .box('head', [0, 1.66, 0.02], [0.56, 0.14, 0.46], S.gold, F.headdress)
     .box('head', [0, 1.9, 0.05], [0.08, 0.36, 0.08], S.gold, F.headdress)
     .boxLR('head', [0.16, 1.85, 0.05], [0.07, 0.26, 0.07], S.gold, F.headdress)
