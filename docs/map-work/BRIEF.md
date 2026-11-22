@@ -2554,7 +2554,9 @@ l-ref `cam=-324,18,-88,-360,6,-36,55`; fireworks `fireworks=<s>&cam=384,11,-248,
   the lake stage; more as the show builds, a stream through the finale in purple, lotus, ice and jade; on low only near
   their site), so the views from above have bursts in frame; the searchlights a V at all times; palm arms smooth strokes.
   The Kulen stream's and pool's candles and the bank lamps' reflections are water lights (`_lkReflect.ts` `WaterLights`);
-  `kitFire` tongues narrow to points round a yellow-white heart; the frangipani (`_sqGarden.ts` champa) a tree with leaf
+  `kitFire` a low full fire (six orange tongues, three gold, a small white-hot heart at the foot; the kit's flame mode
+  lights a leaping tongue by nothing at night, fades it from its foot to a red-orange tip and dissolves its sides and
+  tip pixel by pixel); the frangipani (`_sqGarden.ts` champa) a tree with leaf
   rosettes and flower clusters; the meadow's stepping stones pale and bedded. The festival krama (`FEAT.kramaWrap`: a
   twisted cloth roll wound twice round the short hair, the hair showing in the middle from above, a fine muted check as
   thin lines round the turns, a knot and tail at the side) on about one man in five; `PEOPLE_FIRE` has four entries (the two stages
