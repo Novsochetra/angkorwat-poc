@@ -33,6 +33,7 @@ import { graphicsNow } from '../graphics';
 import { BLESS_SCRIPT } from '../roam/_blessingHooks';
 import { ROAM_SCALE } from '../roam/types';
 import { SlotMarks } from './_things';
+import { GROUND_LIGHT } from './_groundLight';
 
 /**
  * The people of the map: one blocky person model (boxes on 15 bones, in the
@@ -1873,28 +1874,42 @@ interface CrowdUniforms {
 
 /**
  * The New Year's Eve venues' firelight on the people in them (AWP-35: from above the crowd was dark hair and dark
- * clothes; the venues' painted light pools light nobody): per venue its middle (x, z), radius (m) and strength (0 off; a
- * stage's entry less than 0 takes it off the performers there, lit by the stage's own lamps: entries 0, 1 the Kulen
- * square and the lake plaza, 2, 3 their stages), a table every crowd's shader reads (`FIRE_GLSL`: a warm fill on their colours, most on what faces up, a little warm
- * sheen on dark hair). The New Year scenes (people/_sceneNye.ts, _sceneNyeLake.ts) set it on the event night.
+ * clothes): per venue its middle (x, z), radius (m) and strength (0 off; a stage's entry less than 0 takes it off the
+ * performers there, lit by the stage's own lamps): entries 0, 1 the Kulen square (only while its lamp pools' light map,
+ * `_groundLight.ts`, is off: on low) and the lake plaza, 2, 3 their stages. A table every crowd's shader reads
+ * (`FIRE_GLSL`, with the light map: one warm fill, most on what faces up, a little warm sheen on dark hair). The New
+ * Year scenes (people/_sceneNye.ts, _sceneNyeLake.ts) set it on the event night.
  */
 export const PEOPLE_FIRE: { value: Vector4[] } = { value: [new Vector4(), new Vector4(), new Vector4(), new Vector4()] };
-/** The firelight's colour (linear), and the sheen it leaves on any colour (dark hair from above). */
-const FIRE_COLOR = [1.0, 0.6, 0.3] as const;
+/** The venues' light's colour (linear: as the lamp pools'), and the sheen it leaves on any colour (dark hair from above). */
+const FIRE_COLOR = [1.0, 0.72, 0.45] as const;
 const FIRE_SHEEN = 0.15;
 /**
- * The fill, for the lit vertex shader after the person's colour (`vPColor`) and posed normal (`pNrm`): the person's
- * place from their instance (one loop over the venues' table, no branches), stronger the higher a face turns up.
+ * The New Year venues' light on the people in them, for the lit vertex shader after the person's colour (`vPColor`)
+ * and posed normal (`pNrm`, `pPos`): ONE warm fill from two sources, one call site, no if chains —
+ * - the venues' table (`PEOPLE_FIRE`: the lake plaza; the Kulen square only while its light map below is off, on low;
+ *   the stages' entries taking it off their performers): by the person's place (their instance), one loop, stronger
+ *   the higher a face turns up;
+ * - the light lying on the land at their feet (`_groundLight.ts`: the Kulen square's lamp pools, nye/_sqLight.ts; off:
+ *   not read), at each vertex: whoever stands in a pool is warm, in a gap between pools dark, as the pavers there.
  */
 const FIRE_GLSL = /* glsl */ `
   #ifdef USE_INSTANCING
-    vec3 pAt = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    mat4 pModel = modelMatrix * instanceMatrix;
   #else
-    vec3 pAt = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    mat4 pModel = modelMatrix;
   #endif
+  vec3 pAt = (pModel * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
   float pFire = 0.0;
   for (int k = 0; k < ${PEOPLE_FIRE.value.length}; k++) pFire += uPFire[k].w * (1.0 - smoothstep(uPFire[k].z * 0.6, uPFire[k].z, length(pAt.xz - uPFire[k].xy)));
-  vPGlow += vec3(${FIRE_COLOR.map((v) => v.toFixed(2)).join(', ')}) * max(pFire, 0.0) * (0.35 + 0.65 * smoothstep(-0.3, 0.9, pNrm.y)) * (vPColor + ${FIRE_SHEEN.toFixed(2)});`;
+  float pLit = max(pFire, 0.0) * (0.35 + 0.65 * smoothstep(-0.3, 0.9, pNrm.y));
+  if (uPGroundAt.w > 0.0) {
+    vec2 pGUv = ((pModel * vec4(pPos, 1.0)).xz - uPGroundAt.xy) * uPGroundAt.z;
+    vec4 pG = texture2D(uPGround, pGUv);
+    float pGIn = step(0.0, pGUv.x) * step(pGUv.x, 1.0) * step(0.0, pGUv.y) * step(pGUv.y, 1.0);
+    pLit += (pG.r + pG.g) * pGIn * uPGroundAt.w;
+  }
+  vPGlow += vec3(${FIRE_COLOR.map((v) => v.toFixed(2)).join(', ')}) * pLit * (vPColor + ${FIRE_SHEEN.toFixed(2)});`;
 
 /** The bone texture the crowd reads (the bone pass; null without it). */
 interface BoneUniforms {
@@ -1909,7 +1924,7 @@ interface BoneUniforms {
  */
 function inject(shader: WebGLProgramParametersWithUniforms, u: CrowdUniforms & BoneUniforms, colour: boolean, bones: boolean): void {
   Object.assign(shader.uniforms, u);
-  const pars = colour ? `\nuniform sampler2D uPPal;\nuniform float uPGlow;\nuniform vec4 uPFire[${PEOPLE_FIRE.value.length}];\nvarying vec3 vPColor;\nvarying vec3 vPGlow;\n` : '';
+  const pars = colour ? `\nuniform sampler2D uPPal;\nuniform float uPGlow;\nuniform vec4 uPFire[${PEOPLE_FIRE.value.length}];\nuniform sampler2D uPGround;\nuniform vec4 uPGroundAt;\nvarying vec3 vPColor;\nvarying vec3 vPGlow;\n` : '';
   shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${GLSL_WORN}${bones ? GLSL_FETCH : GLSL_SKIN}${pars}`);
   // (a box not worn, or a person hidden, folds to a point before any posing)
   const pose = bones
@@ -1953,6 +1968,7 @@ function inject(shader: WebGLProgramParametersWithUniforms, u: CrowdUniforms & B
   // (the person's own row of colours: aPCh2.w)
   vPColor = texelFetch(uPPal, ivec2(pSlot, int(aPCh2.w + 0.5)), 0).rgb;
   vPGlow = pSlot == ${SLOT.flame} ? vPColor * uPGlow : vec3(0.0);
+  // The New Year venues' light on them (the venues' table and the Kulen square's lamp pools: FIRE_GLSL).
 ${FIRE_GLSL}
   // Undersides a little darker (no bounce light there).
   vPColor *= 0.84 + 0.16 * smoothstep(-1.0, 0.2, normal.y);`,
@@ -2237,7 +2253,8 @@ export class Crowd {
     };
     const type = boneType(opts.renderer);
     const bones = type !== null;
-    const u = { ...this.uniforms, uPBones: this.boneTex };
+    // (the light on the land at their feet: one for the map, shared by every crowd)
+    const u = { ...this.uniforms, ...GROUND_LIGHT, uPBones: this.boneTex };
     const material = crowdMaterial(name, u, bones);
     const depth = new MeshDepthMaterial();
     depth.name = `${name}:depth`;

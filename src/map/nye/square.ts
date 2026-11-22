@@ -23,7 +23,13 @@ import { layLanternWalk } from './_sqWalk';
 import { raiseFlags } from './_sqFlags';
 import { buildSala } from './_sqSala';
 import { buildSquareGlow, clampBulbs } from './_sqGlow';
+import { flickerFlames } from './_sqLightFlicker';
 import { growMeadow } from './_sqMeadow';
+import { buildSquareLife } from './_sqLife';
+import { GROUND_LIGHT } from '../people/_groundLight';
+
+/** How much the lamps' pools on the ground light the people standing in them (× the light map's own light). */
+const PEOPLE_FILL = 0.35;
 
 /**
  * The festival square at Phnom Kulen's foot (AWP-35, docs/discussion/new-year-online.md; where: plan.ts), all
@@ -36,13 +42,17 @@ import { growMeadow } from './_sqMeadow';
  * - the entrance gate on the village side with a Bayon face on each side of its tower (`_sqGate.ts`);
  * - the lantern walk from the village up the Kulen foot trail to the gate (`_sqWalk.ts`), Khmer lamps on posts;
  * - red banners with the white Angkor Wat on tall poles, the map's own trees with string lights, lotus pots
- *   (`_sqDecor.ts`); the four New Year snack stalls, each a shop (`_sqStalls.ts`).
+ *   (`_sqDecor.ts`); seven stalls, each a shop (`_sqStalls.ts`: four snacks, flowers, lamps and toys, the
+ *   sugarcane cart), the tables, benches and fire bowls (`_sqSeats.ts`); the light that lies on it all
+ *   (`_sqLight*.ts`) and the mist round it (`_sqLightAir.ts`).
  *
  * Draws: the floor (1), the square's blocks (a mesh per family: stone, bark, leaf, petal), the lantern walk's
- * (stone, in two places, culled apart), the kit (banners and the strings' wires: 1, waving in its shader), the
- * flames and the bulbs (2), the halos (1), the ring (1). Two real lights (sky/lampSlots.ts), at night only: the
+ * (stone, in two places, culled apart), the kit (banners: 1, waving in its shader), the flames and the bulbs (2),
+ * the halos (1), the ring (1), the square's life (`_sqLife.ts`: the edge strings swaying, petals, the day's or the
+ * night's flyers, fireflies and embers at night: 3‥4). Two real lights (sky/lampSlots.ts), at night only: the
  * ring's and the gate's; the rest is glow and bloom. What moves: the banners (the kit's shader), the ring's
- * breath and the glows (uniforms): no matrix changes after the build.
+ * breath and the glows (uniforms), the canopy's strings and lanterns swaying (`_sqGlow.ts`, `_sqSway.ts`), the life
+ * (its shaders): no matrix changes after the build.
  */
 export function buildNyeSquare(ctx: MapContext): NyePiece {
   const t0 = performance.now();
@@ -63,6 +73,8 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   // (the string lights' bulbs small bright points at any distance; the avenue's glow strips as they are)
   clampBulbs(bulbs.material);
   const u = kitUniforms();
+  // (the flames breathe, each its own way: _sqLightFlicker.ts)
+  flickerFlames(lamps.material, u.uTime, 0.14);
   const kit = new Kit();
   const glow = new Glow();
 
@@ -82,13 +94,13 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
     }
   buildSala(b, field, lamps, bulbs, glow, low);
   const garden = plantGarden(b, field, lamps, low);
-  const decor = dressSquare(b, kit, field, bulbs, low, garden.trees);
-  buildStalls(b, field, lamps, glow, low, bulbs);
+  const decor = dressSquare(b, kit, field, low, garden.trees);
+  buildStalls(b, field, lamps, glow, low);
   const wb = new VoxelBuilder();
   const walk = layLanternWalk(wb, field, lamps, glow, low ? 14 : 11);
-  raiseFlags({ object: detail, fb, b, wb, field, u, lamps, bulbs, glow, low });
+  const flags = raiseFlags({ object: detail, fb, b, wb, field, u, lamps, bulbs, glow, low });
   // The garden round it all (tall grass, flowering shrubs, bananas, trees, stepping stones): after everything built, before the glow's poles.
-  growMeadow(b, fb, field, low);
+  growMeadow(b, fb, field, low, { lamps, glow });
 
   const floor = buildVoxelMesh(fb, { quality, name: 'nye:floor', castShadow: false });
   floor.traverse((o) => void (o.userData.noWalk = true));
@@ -99,11 +111,14 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const mid = walk.length ? walk[Math.floor(walk.length / 2)] : [0, 0];
   const split = splitByPlace(wb, [{ x: walk[0]?.[0] ?? 0, z: walk[0]?.[1] ?? 0 }, { x: mid[0], z: mid[1] }], 30);
   for (const [i, part] of [...split.parts, split.rest].entries()) if (part.boxes.length) detail.add(buildVoxelMesh(part, { quality, name: `nye:walk${i}` }));
-  const sqGlow = buildSquareGlow(ctx, { walk, trees: decor.trees, kit });
+  const sqGlow = buildSquareGlow(ctx, { walk, trees: decor.trees, crowns: garden.trees, kit });
   detail.add(sqGlow.object);
   const shadows = new ShadowGate(true).addAll(detail);
+  // (fireflies, embers, petals, butterflies, dragonflies, moths, bats, the edge strings swaying: _sqLife.ts)
+  const life = buildSquareLife(ctx, { trees: garden.trees, walk, avenue: flags.lights, strings: decor.strings });
+  detail.add(life.object);
 
-  // The kit (banners, wires): waving in its shader; casts no shadow (still shadows on low and medium: it moves).
+  // The kit (the banners): waving in its shader; casts no shadow (still shadows on low and medium: it moves).
   const kitMesh = kit.build('nye:square', u);
   kitMesh.show(true);
   kitMesh.mesh.castShadow = false;
@@ -180,10 +195,14 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
       bulbs.update(n, now + 1.7);
       ring.update(n, event, now);
       garden.update(n, lit, event > 0);
-      // (warm light over the ring, soft: the pavers keep their stone colour and the lotus its gold lines)
+      // (a soft fill: the lamps' own pools make the light, not one wash over the floor; the pavers keep their stone colour
+      // and the lotus its gold lines)
+      // (the lamps' pools on the people standing in them, not on low: people/_groundLight.ts)
+      GROUND_LIGHT.uPGroundAt.value.w = low ? 0 : PEOPLE_FILL * lit * (1 + 0.2 * event);
       ringLamp.intensity = 60 * lit * (1 + 0.3 * event);
       gateLamp.intensity = 70 * lit;
       sqGlow.update(f);
+      life.update(f);
       shadows.update(f);
     },
   };

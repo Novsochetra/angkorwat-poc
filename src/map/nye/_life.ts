@@ -12,7 +12,8 @@ import { SPARK_MAX, SPARKS, type SparkSite } from './_lifeSparks';
 
 /**
  * The New Year's Eve night's small life and motion round both venues (AWP-35, the craft pass; the owner's lake
- * reference: fireflies in the garden, petals drifting from the flowering trees): one point-sprite draw a venue, all of
+ * reference: fireflies in the garden, petals drifting from the flowering trees; at the Kulen square only the motes and
+ * the sparklers' sparks, its fireflies and petals being its own life's, nye/_sqLife*.ts): one point-sprite draw a venue, all of
  * it moving in its shader (the `nye` part is frozen for matrices: nothing here moves on the CPU), only on the event
  * night (clock.ts `nightHeld`), only near its venue (within `NEAR` m of the camera), none on the low level (phones):
  *
@@ -33,7 +34,7 @@ import { SPARK_MAX, SPARKS, type SparkSite } from './_lifeSparks';
 const NEAR = 260;
 /** Each venue's sprites on high (medium draws the first `MEDIUM` share of each kind). */
 const COUNTS = {
-  kulen: { fireflies: 320, petals: 440, motes: 170, sparks: 14 },
+  kulen: { fireflies: 0, petals: 0, motes: 170, sparks: 14 }, // (the square's own `_sqLife*` pieces bring its fireflies and petals)
   lake: { fireflies: 260, petals: 320, motes: 130, sparks: 14 },
 } as const;
 const MEDIUM = 0.55;

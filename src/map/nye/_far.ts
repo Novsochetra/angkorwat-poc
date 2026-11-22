@@ -105,8 +105,11 @@ export class FarCollector {
     if (mesh.isInstancedMesh && o.userData.voxelShape) return this.voxels(mesh);
     if (mesh.isInstancedMesh && (mesh.material as Material).type === 'MeshBasicMaterial') return this.glowing(mesh);
     if (geo.getAttribute('iPos')) return this.kit(geo as InstancedBufferGeometry);
-    if (geo.getAttribute('gPos')) return this.halos(geo, 'gPos', 'gCol', (i, a) => a[i * 4 + 0] < 0.5 && geo.getAttribute('gPos').array[i * 4 + 3] === 0, 0.45);
-    if (geo.getAttribute('sPos')) return this.halos(geo, 'sPos', 'sCol', (i, a) => a[i * 4 + 3] < 0.5, 0.45);
+    // (only the festival glow's and the square glow's own halo draws: other instanced draws that reuse an attribute
+    // name, as the square life's sparks with a bare `gPos`, are no halos and are left out)
+    if (geo.getAttribute('gPos') && geo.getAttribute('gCol') && geo.getAttribute('gMode'))
+      return this.halos(geo, 'gPos', 'gCol', (i, a) => a[i * 4 + 0] < 0.5 && geo.getAttribute('gPos').array[i * 4 + 3] === 0, 0.45);
+    if (geo.getAttribute('sPos') && geo.getAttribute('sCol')) return this.halos(geo, 'sPos', 'sCol', (i, a) => a[i * 4 + 3] < 0.5, 0.45);
     if ((o as Points).isPoints && geo.getAttribute('aSize')) {
       const p = geo.getAttribute('position').array;
       const s = geo.getAttribute('aSize').array;

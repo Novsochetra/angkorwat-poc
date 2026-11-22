@@ -234,7 +234,7 @@ export function layAvenue(fb: VoxelBuilder, b: VoxelBuilder, field: HeightField,
 const BRONZE = [0x5c4430, 0x523c2a, 0x664c36];
 
 /** A fire bowl on a stone stem (its foot on the land at x, z; `k` its size): a bronze bowl, its fire's heart and tongues. */
-function fireBowl(b: VoxelBuilder, field: HeightField, x: number, z: number, k: number, src: SourceTrace | undefined, lamps: Lamps, glow: Glow | null, low: boolean, kit: Kit | null): void {
+export function fireBowl(b: VoxelBuilder, field: HeightField, x: number, z: number, k: number, src: SourceTrace | undefined, lamps: Lamps, glow: Glow | null, low: boolean, kit: Kit | null = null): void {
   const y = field.heightAt(x, z);
   const st = (i: number) => pick(POST_STONE, x, z, i, 81);
   b.box(x, y + 0.1 * k, z, 0.7 * k, 0.3 * k, 0.7 * k, pick(LATERITE, x, z, 1, 81), 'mapStone', { src, shade: 0.95 });

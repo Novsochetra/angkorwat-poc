@@ -53,7 +53,10 @@ export const ANIM = {
   none: 0,
   /** A paddle: swings about its grip (`a` = pivot x, y, z in rig space) with the rig's stroke; `b.x` = side (+1 port, −1 starboard). */
   paddle: 1,
-  /** A cloth waving from its pole along its own +x: `a` = (amplitude m/m, metres of cloth before this box, rad/s), `b.x` = phase. */
+  /**
+   * A cloth waving from its pole along its own +x: `a` = (amplitude m/m, metres of cloth before this box, rad/s), `b.x` = phase,
+   * `b.y` = rad a metre the ripple runs down the cloth (0: none), `b.z` = metres of cloth above this box's top.
+   */
   wave: 2,
   /** A floating candle drifting (see `kDrift`): `a` = (kind 0 wander / 1 flow out, phase 0‥1, radius or length m), `b` = (dir x, dir z, period s or rad/s). */
   drift: 3,
@@ -183,11 +186,17 @@ vec3 kitPos(vec3 p, inout vec3 n) {
   int mode = int(iAnim.x + 0.5);
   int rig = int(iPos.w + 0.5);
   if (mode == 2) {
-    // Cloth: waves grow along it away from the pole.
+    // Cloth: waves grow along it away from the pole (and may run down it).
     float u = iAnim.z + (p.x + 0.5) * size.x;
-    float w = uTime * iAnim.w + iAnim2.x - u * 2.4;
-    q.z += iAnim.y * u * sin(w);
+    float v = iAnim2.z + (0.5 - p.y) * size.y;
+    float w = uTime * iAnim.w + iAnim2.x - u * 2.4 + iAnim2.y * v;
+    float sw = sin(w);
+    float cw = cos(w);
+    q.z += iAnim.y * u * sw;
     q.y -= iAnim.y * 0.25 * u * (0.5 + 0.5 * sin(w * 0.5 + 1.3));
+    // (its slope along and up the cloth turns the normal: the light moves over the folds)
+    vec2 sl = iAnim.y * vec2(sw - 2.4 * u * cw, -u * iAnim2.y * cw);
+    n = normalize(vec3(n.x - sl.x * n.z, n.y - sl.y * n.z, n.z + sl.x * n.x + sl.y * n.y));
   }
   mat3 R = kRotY(iSize.w) * kRotX(iRot.x) * kRotZ(iRot.y);
   vec3 c = iPos.xyz;

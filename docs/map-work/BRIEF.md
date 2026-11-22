@@ -2338,9 +2338,61 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
     Angkor Thom style gate with Bayon faces (`_sqGate.ts`, `landmarks/_faces.ts`); Khmer lamps (an Angkor tower
     top) along the lantern walk, each finding ground off the trail and away from the nursery, his house and the
     cattle trader (`_sqWalk.ts`); banners with the white Angkor Wat waving in the festival kit, the map's own
-    trees (two in blossom) with string lights, lotus pots (`_sqDecor.ts`); four snack stalls registered as shops
-    `nye-sweets`, `nye-grill`, `nye-drinks`, `nye-cakes` (`_sqStalls.ts`). ≈ 6.9 k blocks, ≈ 13 draws, two
-    night-only lamps (the ring, the gate passage).
+    trees (two in blossom) with string lights, lotus pots (`_sqDecor.ts`); seven stalls registered as shops
+    (`_sqStalls.ts`, plan.ts `STALLS` with their `kind`): the four snacks `nye-sweets`, `nye-grill`, `nye-drinks`,
+    `nye-cakes`, lotus and garlands, paper lamps and toys, and the sugarcane juice cart `nye-cane`; drawn `STALL_K`
+    1.3× a real stall (the map's people are 1.4×); peaked red-and-white canopies, a red sign with the ware in gold
+    Koulen pixel Khmer (`_sqFestSigns.ts`, no letters on low), bulbs, a strip light under the ridge, goods
+    (`_sqFestGoods.ts`); low tables with plastic stools, benches with a Khmer lamp, fire bowls (`_sqSeats.ts`:
+    `TABLES`, `BENCHES`, `FIRES`, `SEAT_H`, `TABLE_H`, `tableStools`); the sala's roof outlined in bulbs, gilt rakes,
+    corner lamps, the monks' mat (`_sqSala.ts`; `SALA`, `SALA_FLOOR` in plan.ts). Two night-only lamps (the ring,
+    the gate passage).
+  - **The square's look** (the owner, November 2026: "make it wow", after `assets/new-year-online/square-wow-reference.jpg`;
+    the fireworks as they were). In layers:
+    - *Light* (`_sqLight.ts` `LightWash`): one multiplying draw, what is under it × (1 + its light), so stone keeps
+      its tones and a gap between lamps stays dark: pools under every lamp, pole, stall, tree lantern and along the
+      strings, added up round the square in a light map baked once (x 332‥448, z −314‥−198, ½ m a texel, 1 m on
+      low), quads of their own farther out; washes up walls. Never lay it strong over a real lamp's spot (it burns)
+      nor overlap two of its quads (they compound). The same map lights the people standing in it
+      (`people/_groundLight.ts`, read at each person's feet in the crowd's shader; square.ts `PEOPLE_FILL`; off on
+      low). The gate lit as a feature (`_sqLightGate.ts`: four bronze fire bowls, an uplight under each Bayon face, a
+      tower lantern in the passage). Flames and lanterns flicker each its own way, bulbs not (`_sqLightFlicker.ts`
+      `nyeFlicker`, `flickerFlames`). Cool mist in the forest edges and over the stream, spray at the falls' foot,
+      night only (`_sqLightAir.ts`). `_sqGlow.ts`: no gold haze over the square any more (its dome shows only from
+      far off); beams `BEAMS_MAX` 4 (2 on low), slim, amber, slow, at 30 % while the show plays (both stages);
+      shafts under the poles' lanterns, the flowering crowns lit from under, thin haze slices. The ring at
+      0.9 + 0.35 × the night, its lamp 60.
+    - *Life* (`_sqLife.ts`; `_sqLifeSparks.ts`, `_sqLifePetals.ts`, `_sqLifeWings.ts`, `_sqLifeSway.ts`): at night
+      fireflies (in swarms at the forest edge under Kulen, the gardens, the avenue, the stream), embers from the
+      stage's and the avenue's fire bowls, moths round the lamps, bats over the north half and flying foxes round the
+      prasat; by day butterflies round the trees and beds, dragonflies over the stream and pool; always petals
+      falling from the flowering trees and lying a few seconds; the edge strings sway. Counts by quality (`COUNTS`),
+      all posed in vertex shaders from one time, no matrices; fliers and fireflies go in rain. The kit's `ANIM.wave`
+      takes a ripple down the cloth (`b.y` rad/m, `b.z` the box's top under the cloth's) and shades the folds.
+      The canopy's strings (the stage gate's fans, pole to pole, the lantern walk's) and the edge strings sway with
+      one shared swing (`_sqSway.ts` `nyeSwayAt`): sideways round the line between the ends, at most k × the sag in
+      the middle (0.2; 0.13 for spans ≥ 7 m up), two slow beats, halos following their bulbs; the hanging lanterns
+      swing as pendulums (2.2‥3.6°, 2.5‥4 s, each its own phase; the gate passage's half as far), cord, wood, body and
+      halo together. The lanterns' wood is boxes in the glow's bodies draw (`_sqGlowBodies.ts`: unlit, shaded by face
+      and the time of day, warm on the face turned to its lantern at night), not the square's voxels. All on the glow's
+      600 s clock (speeds whole turns in it), no draw of their own: compare two shots at `t=12` and `t=13.5`.
+    - *Festival* (the stalls and seats above; the people below).
+    - *Gardens* (`_sqPath.ts`, `_sqPathKit.ts`, `_sqRiver.ts`; `_sqGarden.ts`, `_sqMeadow.ts`): a front path from
+      the back trail to the avenue by the gate, a river path round the south-east to the quay and a teak footbridge
+      over the Kulen stream (plan.ts `BRIDGE`: lacquered rails, a lamp at each corner, two lanterns over the water;
+      he walks over it), stepping stones below the falls (`STEPS_Z`), the east bank's kerb, wall, rocks, reeds and
+      taro, lotus and lily pads along both banks; flagstone paths in the floor builder with Khmer lamps, fire bowls,
+      glazed jars and carved planters; edge beds with kerbs; planting layered outward from the square; trees kept
+      out of the reference, overview and crowd views' sight lines (`hidesView`). Shots: the riverside
+      `cam=428,13,-232,438,7,-249,55`, the front path `cam=360,16,-214,374,7,-233,55`, the walk over the bridge
+      `roam=walk&at=425,-248&yaw=90&sim=w:3.2`.
+    Its cost (counted 2026-11-21 on a CPU, exact draws and triangles, before → after, at 23:30 with the crowd): a
+    phone on low walking on the square 847 → 853 draws, + 1.4 % triangles; the reference view on low 860 → 866,
+    + 1.0 %; walking on high 604 → 610, + 6.1 % (the flowers and paths: the square's petal family 78 k → 204 k). The
+    six new draws: the light, the mist, the sparks, the petals, the fliers, the strings.
+    Views to judge it by: the reference `cam=345,42,-200,392,6,-275,48`, the crowd's `VIEW`, among the people
+    `cam=362,11.5,-245,395,9,-272,60`, from over it `cam=383,85,-232,383,8,-265,60` (all `nye=+30m&graphics=high`),
+    and the reference with `graphics=low&phone=1`.
   - `stage.ts` (`_st*.ts`): a temple-terrace platform, stairs between two seven-headed naga (`sacred/naga.ts`
     `stairNaga`) whose bodies run as the front balustrade, fire bowls, Khmer lamps; the board's gate: carved
     kbach pillars (`_stCarve.ts`, `sacred/kbach.ts`), a balustered window, a lotus-bud prasat with two corner
@@ -2375,9 +2427,13 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   - Nothing in the part moves but in shaders and the board's texture: it is in main.ts `FROZEN` and
     `STILL_PARTS`.
 - **The people: `people/_sceneNye.ts`** (plan `people/_nyePlan.ts`). Ordinary days: 14 (sellers at the
-  stalls, a gate attendant, children at the ring, evening visitors). The night: 104 (47 on low) in 35 families
-  arriving by the lantern walk from 22:20, mats, sparklers, phones, two monks watching; the ring and an aisle
-  to the stairs kept open for players; apsara dancers and a pinpeat ensemble on the stage until 23:50; the
+  stalls, a gate attendant, children at the ring, evening visitors; a seller at each of the seven stalls). The
+  night: 143 (72 on low) in 45 groups on hand-set spots, never in the ring, the aisle or the furniture: families
+  in knots before the stage (children on shoulders), diners at the tables (standing behind their stools from
+  −16 s, sitting again 25 s after the show), mats with picnics, elders on the benches, chat circles (one talks,
+  the others look at them), selfie couples, children running round the fire bowls with sparklers, a queue at
+  each stall (the first buyer served), strollers round the stalls, three monks in the sala; arriving by the
+  lantern walk 22:22‥23:23, home 00:09‥00:34; the ring and an aisle to the stairs kept open for players; apsara dancers and a pinpeat ensemble on the stage until 23:50; the
   count, cheers and hugs at midnight, heads up for the show, gone by 00:40.
 - **The lakeside people: `people/_sceneNyeLake.ts`** (scene `nyelake`; plan `people/_nyeLakePlan.ts`, whose
   `LakeSite` follows the venue's own rules from the height field — the terrace's pavers, the ghat's step tops, the
@@ -2390,7 +2446,7 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   (14 people, 3 boats on low) paddle up and moor beyond the stage's village end, a lantern at each bow; a mahori
   ensemble (roneat ek, khim, tro) and two romvong dancers on the deck until 23:50, off down the jetty at 00:15; the
   count, cheers and hugs, heads up for the lake show, gone by 00:40. ≈ 0.1‥0.3 ms CPU a frame on a CPU-only machine
-  (a shot's "people CPU by step"). The crowd's `CAPACITY` is 560 (486 used with every scene).
+  (a shot's "people CPU by step"). The crowd's `CAPACITY` is 610 (551 used with every scene).
 - **The fireworks: part `fireworks`** (`nye/fireworks.ts`, `_fwShaders.ts`), built only when the show is within
   an hour (main.ts `LATER`). The script `nye/show.ts`: 797 rockets over 465 s, seeded, the same everywhere,
   placed by bearing and height from the crowd's view over Kulen's east flank right of the stage, and a crown

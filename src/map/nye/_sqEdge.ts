@@ -176,12 +176,18 @@ function pillar(b: VoxelBuilder, kit: Kit, x: number, g: number, z: number, low:
 }
 
 /**
- * Where the gathering area's lantern pillars stand (θ degrees round the ring from +x, +z south), 20.6 m out: in the
- * four wide gaps the night's crowd leaves round it (people/_nyePlan.ts `planCrowd`, checked: every spot ≥ 5.7 m and
- * every walk-in route ≥ 4 m away), two flanking the stage's side of the circle, two its gate side.
+ * Where the gathering area's lantern pillars stand (θ degrees round the ring from +x, +z south; m out from its
+ * middle): in the gaps the night's crowd leaves (people/_nyePlan.ts `planCrowd`, checked: every spot, walk-in route
+ * and stroll ≥ 2.7 m from a pillar's middle, the tables, benches, stalls, cart, lotus pots and naga ≥ 2.3 m), two
+ * flanking the way up to the stage outside its lotus pots, two on the ring's west and east past the tables. The gate's
+ * side has the gate's own braziers (`_sqLightGate.ts`) and the crowd's ways in.
  */
-const GATHER_PILLARS = [-150, -30, 160, 20];
-const GATHER_R = 20.6;
+const GATHER_PILLARS: readonly [number, number][] = [
+  [-127, 21.3],
+  [-53, 21.3],
+  [-174.3, 24.1],
+  [-5.7, 24.1],
+];
 
 /**
  * The gathering area's lantern pillars (the owner's sheet, "PLAYER GATHERING AREA": chunky stone posts whose top is
@@ -194,10 +200,10 @@ const GATHER_R = 20.6;
 export function gatheringPillars(b: VoxelBuilder, field: HeightField, kit: Kit, low: boolean, ring: { x: number; z: number }): [number, number, number][] {
   const src = traceSource();
   const cores: [number, number, number][] = [];
-  for (const [i, th] of GATHER_PILLARS.entries()) {
+  for (const [i, [th, r]] of GATHER_PILLARS.entries()) {
     const a = (th * Math.PI) / 180;
-    const x = ring.x + Math.cos(a) * GATHER_R;
-    const z = ring.z + Math.sin(a) * GATHER_R;
+    const x = ring.x + Math.cos(a) * r;
+    const z = ring.z + Math.sin(a) * r;
     const g = field.heightAt(x, z) + TOP;
     const face = Math.atan2(ring.x - x, ring.z - z);
     const ry = face;

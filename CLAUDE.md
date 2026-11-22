@@ -269,8 +269,12 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   village pagoda. A shot with none of `fest=`, `season=`, `day=` shows no festival.
 - New Year's Eve online, phase 1 (AWP-35, the plan `docs/discussion/new-year-online.md`;
   the guide BRIEF.md "New Year's Eve"): the festival square at Phnom Kulen's foot
-  (`src/map/nye/`, part `nye`: floor, lotus ring, Bayon-face gate, lantern walk, stalls
-  `_sq*.ts`; the stage, naga and the Khmer countdown board `stage.ts`, `_st*.ts`, `board.ts`),
+  (`src/map/nye/`, part `nye`: floor, lotus ring, Bayon-face gate, lantern walk, the seven stalls, seats and
+  fire bowls `_sq*.ts`; the stage, naga and the Khmer countdown board `stage.ts`, `_st*.ts`, `board.ts`; its look
+  after the owner's reference `assets/new-year-online/square-wow-reference.jpg`, BRIEF.md "The square's look": the
+  light lying on it `_sqLight*.ts` (its pools also light the people, `people/_groundLight.ts`), its life (fireflies,
+  embers, petals, butterflies, dragonflies, moths, bats, swaying strings) `_sqLife*.ts`, gardens, paths and the
+  stream's footbridge `_sqPath*.ts`, `_sqRiver.ts`),
   its people (`people/_sceneNye.ts`), the fireworks (part `fireworks`, built only when the
   show is near: the script `nye/show.ts`, `fireworks.ts`, `_fw*.ts`; a second show over the great lake for the
   lake stage's crowd, same clock and acts, `Rocket.site`, fired from barges `LAKE_BARGES`), the night-time hold
