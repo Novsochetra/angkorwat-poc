@@ -126,15 +126,18 @@ export const FW_VERTEX = /* glsl */ `
     float x0 = max(xm * 0.4, 2.0);
     float x = mix(x0, D, position.y);
     // (as wide as a share of the burst seen from here: a wedge from the eye)
-    float aw = 0.25 * d3.w / max(length(b - c), 1.0) + 0.004;
+    // (never wider than 0.05 rad: a burst low and near the eye spread a haze over the water)
+    float aw = min(0.25 * d3.w / max(length(b - c), 1.0), 0.05) + 0.004;
     vec2 xz = c.xz + dir * x + sideV * (position.x * x * aw);
     vec4 mvPosition = viewMatrix * vec4(xz.x, level + 0.1, xz.y, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     float tau = uTime - d0.w;
     // (the water mirrors the burst's sparks as long as they glow, not only its flash: a slower curve than its light)
     float wl = KL[int(d2.w + 0.5)];
-    float lp = tau < 0.0 ? 0.0 : d4.w * (0.5 * exp(-tau / 0.09) + 0.5 * exp(-tau / 1.2) + wl * 0.45 * exp(-tau / 2.6));
-    vCol = mix(d2.rgb, vec3(1.0), 0.2) * lp * 3.0 * sb.z * (0.4 + 0.6 * uView.w);
+    // (its flash counts for little and its glints come in over half a second: a burst just opening low over the water
+    // was a glare on it, and in the bloom over the venue beside it)
+    float lp = tau < 0.0 ? 0.0 : d4.w * (0.2 * exp(-tau / 0.09) + 0.5 * exp(-tau / 1.2) + wl * 0.45 * exp(-tau / 2.6)) * smoothstep(0.0, 0.5, tau);
+    vCol = mix(d2.rgb, vec3(1.0), 0.1) * lp * 2.6 * sb.z * (0.4 + 0.6 * uView.w);
     vQ = vec2(position.x, position.y);
     vSoft = -1.0;
     vCore = 0.0;

@@ -560,10 +560,13 @@ export function buildFireworks(ctx: MapContext): MapPart {
         if (nearPlane.distanceToPoint(mid) > -reach && left.distanceToPoint(mid) > -reach && right.distanceToPoint(mid) > -reach) drawn.push(i);
         // (the light now: the brightest alone, the others summed where their light's middle is; the far site's dimmed;
         // the sky's own, its flashes softened)
-        const l = burstLight(r, s - b) * weight[r.site];
+        // (a low burst, near a venue, lights it and tints the haze less: the lamp of a bright low one burned the water,
+        // the trees and the plaza beside it white)
+        const low = Math.min(1, Math.max(0.25, (r.by - 15) / 85));
+        const l = burstLight(r, s - b) * weight[r.site] * low;
         if (l <= 0) continue;
         const c1 = COLOURS[r.color];
-        const g = burstGlow(r, s - b) * weight[r.site];
+        const g = burstGlow(r, s - b) * weight[r.site] * low;
         skyW += g;
         skyAt.x += r.bx * g;
         skyAt.y += r.by * g;

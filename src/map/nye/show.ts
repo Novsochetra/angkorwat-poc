@@ -661,6 +661,11 @@ function lakeShow(): Rocket[] {
   };
   const shell = (at: number, layer: Layer, kind: BurstKind, color: ShowColour, bearing?: number, sizeK = 1) => {
     const r = fire(at, lakeSpot(rnd, layer, bearing, sizeK), kind, color, kind === 'willow' || kind === 'palm' ? 'willow' : second(color));
+    // (low over the water by the venue never pale: a bright ice or white burst there hazed the plaza in the bloom)
+    if ((layer === 'mid' || layer === 'low') && kind !== 'crackle') {
+      if (r.color === 'ice' || r.color === 'white') r.color = 'purple';
+      if (r.color2 === 'ice' || r.color2 === 'white') r.color2 = 'lotus';
+    }
     r.close = layer === 'low';
     return r;
   };
